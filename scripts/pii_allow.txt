@@ -1,0 +1,4 @@
+# Known-safe PUBLIC phrases (regexes), removed before the generic scan.
+# Only public business information belongs here, never anything personal.
+# Publix store #01075 (Northwood Crossings) public store address
+2300 McFarland Blvd

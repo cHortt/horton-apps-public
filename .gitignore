@@ -1,0 +1,10 @@
+*.json
+*.csv
+*.pdf
+*.md.bak
+.env
+.env.*
+*.key
+*.pem
+*.txt
+!scripts/pii_allow.txt
