@@ -8,3 +8,4 @@
 *.pem
 *.txt
 !scripts/pii_allow.txt
+__pycache__/
