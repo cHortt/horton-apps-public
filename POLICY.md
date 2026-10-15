@@ -29,8 +29,8 @@ No personal, private, health, financial, or secret information may ever be commi
 
 1. **On the publishing machine (before a commit or push):**
     - a pre-commit and pre-push hook runs `gitleaks` and `scripts/pii_scan.py`, together with a private list of literal terms that is kept outside this repository
-    - the hook blocks any file outside the allowed paths
-2. **On GitHub, for every push and pull request:** the `scan` workflow runs `gitleaks` over the full history, plus `scripts/pii_scan.py`, which uses generic patterns only, and the same path allowlist.
+    - the hook blocks any file outside the allowed paths in `scripts/path_allow.py`
+2. **On GitHub, for every push and pull request:** the `scan` workflow runs `gitleaks` over the full history, plus `scripts/pii_scan.py`, which uses generic patterns only, and `scripts/path_allow.py`.
 3. **GitHub secret scanning and push protection** are turned on for the repository.
 4. **One publish path:** pages are published only by a script that copies allowlisted generated files, checks them, and then commits.
 

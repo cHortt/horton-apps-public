@@ -397,7 +397,9 @@ document.addEventListener("keydown", (event) => {
 });
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").catch(() => {});
+  // "./" resolves to this folder (/vocal/ on Pages, including the project prefix).
+  // The worker script also lives here, so the browser will not allow a wider scope.
+  navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(() => {});
 }
 if (document.fonts?.ready) {
   document.fonts.ready.then(() => {
