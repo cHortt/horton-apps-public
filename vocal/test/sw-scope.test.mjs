@@ -23,7 +23,7 @@ function loadWorker() {
       skipWaiting() { return Promise.resolve(); },
       clients: { claim: () => Promise.resolve() },
       location: { origin: "https://chortt.github.io" },
-      registration: { scope: "https://chortt.github.io/horton-life-ops-public/vocal/" },
+      registration: { scope: "https://chortt.github.io/horton-apps-public/vocal/" },
     };
   `,
     sandbox,
@@ -59,9 +59,9 @@ test("fetch ignores requests outside the vocal scope", () => {
       },
     });
   };
-  fire("https://chortt.github.io/horton-life-ops-public/grocery/index.html");
-  fire("https://chortt.github.io/horton-life-ops-public/vocal/style.css");
-  assert.deepEqual(seen, ["https://chortt.github.io/horton-life-ops-public/vocal/style.css"]);
+  fire("https://chortt.github.io/horton-apps-public/grocery/index.html");
+  fire("https://chortt.github.io/horton-apps-public/vocal/style.css");
+  assert.deepEqual(seen, ["https://chortt.github.io/horton-apps-public/vocal/style.css"]);
 });
 
 test("the vocal worker is registered for this folder only", () => {
