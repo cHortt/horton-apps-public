@@ -40,6 +40,10 @@ APPLETS = {
         r"fixtures/[a-z0-9-]+\.musicxml",
         r"test/[a-z0-9-]+\.test\.mjs",
     ],
+    # Lessons, references, progress logs, and rendered PDFs. No other types.
+    "learning": [
+        r"(?:[A-Za-z0-9][A-Za-z0-9._-]*/)*[A-Za-z0-9][A-Za-z0-9._-]*\.(?:md|html|css|js|pdf|csv)",
+    ],
 }
 
 

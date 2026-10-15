@@ -1,6 +1,9 @@
 *.json
 *.csv
 *.pdf
+# The learning applet tracks its progress logs and lesson PDFs.
+!learning/**/*.csv
+!learning/**/*.pdf
 *.md.bak
 .env
 .env.*
