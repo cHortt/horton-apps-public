@@ -27,4 +27,4 @@ Read [POLICY.md](POLICY.md) before changing anything. In short, never commit any
 - keys, tokens, or credentials
 - content from private repositories
 
-Every push is scanned by `gitleaks` and `scripts/pii_scan.py` (see `.github/workflows/scan.yml`). GitHub secret scanning and push protection are on.
+Every push is scanned by `gitleaks` and `scripts/pii_scan.py` (see `.github/workflows/scan.yml`). GitHub secret scanning and push protection are on. The grocery publisher's local hooks check only grocery paths and its own commits. Each other applet is responsible for its own compliance, under the same no-personal-data rule.
