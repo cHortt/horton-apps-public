@@ -91,7 +91,13 @@ def main(argv):
         if not os.path.isfile(path) or rel.startswith('.git/'): continue
         try: raw = open(path, encoding='utf-8').read()
         except UnicodeDecodeError:
-            print(f'{rel}: binary file (not allowed in this repo; publish text/HTML only)'); hits += 1; continue
+            blob = open(path, 'rb').read()
+            # Learning lessons ship rendered PDFs. Scan their bytes with the same
+            # patterns; do not treat a real PDF as an automatic finding.
+            if rel.endswith('.pdf') and blob.startswith(b'%PDF-'):
+                raw = blob.decode('latin-1')
+            else:
+                print(f'{rel}: binary file (not allowed in this repo; publish text/HTML only)'); hits += 1; continue
         checks = []
         if rel not in SELF: checks += [(n, rx, pub_allow) for n, rx in GENERIC if (rel, n) not in DOC_WAIVE]
         checks += [('denylisted term', rx, pub_allow + priv_allow) for _, rx in terms]

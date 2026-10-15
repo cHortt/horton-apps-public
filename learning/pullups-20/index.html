@@ -1,0 +1,28 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>20 Pull-ups: Plan &amp; Progress</title><link rel="stylesheet" href="assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script></head><body>
+<nav><a href="../">All goals</a></nav>
+<h1>20 strict pull-ups, non-stop</h1><p class="subtitle">Status: Active, Phase 1. Baseline 8 reps (2026-10-14). Next max test: Wed 2026-10-28.</p>
+<h2>Plan</h2>
+<div class="win">Weekdays: 4–6 quick sets of 4 strict pull-ups spread through the day, at least an hour apart. Stop each set before reps slow. Saturday optional, Sunday off. Retest max on Oct 28; lesson 2 builds the next phase from that number.</div>
+<h2>Lessons</h2><ul>
+<li>Lesson 1: Grease the groove, weeks 1–2 (<a href="lessons/0001-grease-the-groove-weeks-1-2.html">web</a> · <a href="lessons/0001-grease-the-groove-weeks-1-2.pdf">PDF</a>)</li></ul>
+<h2>Reference</h2><ul>
+<li>Plan at a glance (<a href="reference/plan-at-a-glance.html">web</a> · <a href="reference/plan-at-a-glance.pdf">PDF</a>)</li>
+<li>Glossary (<a href="reference/glossary.html">web</a> · <a href="reference/glossary.pdf">PDF</a>)</li>
+<li><a href="https://github.com/cHortt/horton-apps-public/blob/main/learning/pullups-20/RESOURCES.md">Sources</a></li></ul>
+<h2>Progress</h2><canvas id="chart" height="220"></canvas>
+<table id="log"><thead><tr><th>Date</th><th>Type</th><th>Sets × reps</th><th>Total</th><th>Notes</th></tr></thead><tbody></tbody></table>
+<p class="side">Raw data: <a href="progress/log.csv">progress/log.csv</a></p>
+<script>
+function parse(t){const L=t.trim().split(/\r?\n/);const h=L.shift().split(',');return L.filter(Boolean).map(l=>{const c=l.split(',');const o={};h.forEach((k,i)=>o[k]=i<h.length-1?c[i]:c.slice(i).join(','));return o;});}
+fetch('progress/log.csv',{cache:'no-store'}).then(r=>r.text()).then(t=>{const rows=parse(t);
+const tb=document.querySelector('#log tbody');rows.slice().reverse().forEach(r=>{const tr=document.createElement('tr');[r.date,r.type,r.sets+' × '+r.reps_per_set,r.total,r.notes].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});tb.appendChild(tr)});
+const dates=[...new Set(rows.map(r=>r.date))].sort();
+const sum=(d,f)=>{const m=rows.filter(r=>r.date===d&&f(r));return m.length?m.reduce((a,r)=>a+(+r.total),0):null};
+const maxv=d=>{const m=rows.filter(r=>r.date===d&&r.type==='max-test');return m.length?Math.max(...m.map(r=>+r.total)):null};
+if(window.Chart)new Chart(document.getElementById('chart'),{data:{labels:dates,datasets:[
+{type:'bar',label:'Daily training total',data:dates.map(d=>sum(d,r=>r.type!=='max-test')),backgroundColor:'#ccc'},
+{type:'line',label:'Max test',data:dates.map(maxv),borderColor:'#a00000',backgroundColor:'#a00000',spanGaps:true,pointRadius:5}]},
+options:{scales:{y:{beginAtZero:true,suggestedMax:20}}}});});
+</script></body></html>
