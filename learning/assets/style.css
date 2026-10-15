@@ -1,0 +1,24 @@
+:root{--ink:#111;--muted:#666;--accent:#a00000;--paper:#fffff8;--rule:#ddd}
+*{box-sizing:border-box}
+body{margin:0 auto;max-width:42rem;padding:1.25rem 1rem 3rem;background:var(--paper);color:var(--ink);font:1.05rem/1.55 "ETBembo","Palatino Linotype",Palatino,Georgia,serif}
+h1{font-weight:400;font-size:2rem;line-height:1.15;margin:.5rem 0 .25rem}
+h2{font-weight:400;font-style:italic;font-size:1.4rem;margin:2rem 0 .5rem}
+h3{font-weight:400;font-size:1.1rem;margin:1.25rem 0 .25rem}
+.subtitle{color:var(--muted);font-style:italic;margin-top:0}
+a{color:var(--accent)}
+.win{border-left:3px solid var(--accent);padding:.25rem .9rem;margin:1rem 0;background:#fff}
+.side{font-size:.88rem;color:var(--muted)}
+table{border-collapse:collapse;width:100%;font-size:.95rem;margin:.75rem 0}
+th,td{border-bottom:1px solid var(--rule);padding:.35rem .4rem;text-align:left;vertical-align:top}
+th{font-weight:600;font-variant:small-caps;letter-spacing:.03em}
+nav{font-size:.9rem;border-bottom:1px solid var(--rule);padding-bottom:.4rem}
+.cite{font-size:.8rem;vertical-align:super}
+.quiz .q{margin:1rem 0}
+.quiz button{display:block;width:100%;text-align:left;font:inherit;margin:.3rem 0;padding:.5rem .7rem;border:1px solid var(--rule);background:#fff;border-radius:6px;cursor:pointer}
+.quiz button.right{border-color:#2a7a2a;background:#eef8ee}
+.quiz button.wrong{border-color:var(--accent);background:#fbeeee}
+.quiz .fb{font-size:.9rem;color:var(--muted);min-height:1.2em}
+.logger input{font:inherit;width:4rem;padding:.3rem}
+.logger button{font:inherit;padding:.3rem .7rem}
+.ask{margin-top:2rem;padding:.75rem 1rem;border:1px dashed var(--muted)}
+@media print{body{background:#fff;max-width:none;font-size:11pt}nav,.logger,.noprint{display:none}.quiz button{border:1px solid #999;padding:.2rem .5rem}a{color:#000}h2{break-after:avoid}table,.q{break-inside:avoid}@page{margin:14mm}}
