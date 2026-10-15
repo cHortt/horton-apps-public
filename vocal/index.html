@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f4f6f8">
+<title>Vocal pitch editor</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="title">
+    <a class="home" href="../">Pages</a>
+    <h1>Vocal pitch editor</h1>
+  </div>
+  <div class="filebtns">
+    <button type="button" id="open">Open</button>
+    <button type="button" id="example">Example</button>
+    <button type="button" id="export" disabled>Export</button>
+  </div>
+  <p id="filelabel">No file loaded</p>
+  <input id="file" type="file" accept=".musicxml,.xml,application/vnd.recordare.musicxml+xml" hidden>
+</header>
+<p id="error" class="error" hidden></p>
+<div id="stage">
+  <div id="gutter"></div>
+  <div id="scroll">
+    <div id="empty">
+      <p>Open a Piano Vocal MusicXML file. Only the vocal staves are shown. Chord symbols stay as written, and the piano plays along without being edited.</p>
+      <p>Nothing is uploaded. The file stays on this device.</p>
+    </div>
+  </div>
+</div>
+<section id="mixer" hidden>
+  <div class="chan"><span>Soprano</span><input data-gain="S" type="range" min="0" max="100" value="100" aria-label="Soprano volume"><button type="button" class="mute" data-mute="S" aria-pressed="false">Mute</button></div>
+  <div class="chan"><span>Alto</span><input data-gain="A" type="range" min="0" max="100" value="32" aria-label="Alto volume"><button type="button" class="mute" data-mute="A" aria-pressed="false">Mute</button></div>
+  <div class="chan"><span>Tenor</span><input data-gain="T" type="range" min="0" max="100" value="32" aria-label="Tenor volume"><button type="button" class="mute" data-mute="T" aria-pressed="false">Mute</button></div>
+  <div class="chan"><span>Bass</span><input data-gain="B" type="range" min="0" max="100" value="32" aria-label="Bass volume"><button type="button" class="mute" data-mute="B" aria-pressed="false">Mute</button></div>
+  <div class="chan"><span>Piano</span><input data-gain="P" type="range" min="0" max="100" value="28" aria-label="Piano volume"><button type="button" class="mute" data-mute="P" aria-pressed="false">Mute</button></div>
+</section>
+<div class="bar">
+  <p id="readout">Open a Piano Vocal file</p>
+  <div class="row">
+    <div class="parts" role="group" aria-label="Part">
+      <button type="button" data-part="S" aria-pressed="true">S</button>
+      <button type="button" data-part="A" aria-pressed="false">A</button>
+      <button type="button" data-part="T" aria-pressed="false">T</button>
+      <button type="button" data-part="B" aria-pressed="false">B</button>
+    </div>
+    <button type="button" id="up" disabled>Up</button>
+    <button type="button" id="down" disabled>Down</button>
+    <button type="button" id="sharp" disabled aria-label="Sharp">♯</button>
+    <button type="button" id="flat" disabled aria-label="Flat">♭</button>
+  </div>
+  <div class="row">
+    <button type="button" id="undo" disabled>Undo</button>
+    <button type="button" id="redo" disabled>Redo</button>
+    <button type="button" id="changes" aria-pressed="false">Show changes</button>
+    <button type="button" id="play" disabled>Play</button>
+    <button type="button" id="mixer-btn" aria-expanded="false" aria-controls="mixer">Mix</button>
+    <label class="tempo">Tempo <input id="tempo" type="range" min="40" max="160" value="68" aria-label="Tempo"> <span id="bpm">68</span></label>
+  </div>
+</div>
+<script type="module" src="js/app.mjs"></script>
+</body>
+</html>
