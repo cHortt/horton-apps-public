@@ -399,6 +399,23 @@ export function exportScore(score) {
   return out;
 }
 
+export const MXL_ERROR =
+  "Compressed .mxl files aren't supported. Export uncompressed MusicXML (.musicxml) and open that.";
+
+// The file picker accepts every file. This checks the name and the bytes
+// before the score parser runs. .mxl is a zip package, which this editor does not read.
+export function rejectOpenedFile(filename, text) {
+  const name = String(filename || "");
+  if (/\.mxl$/i.test(name)) return MXL_ERROR;
+  if (text == null) return "";
+  const body = String(text);
+  if (body.startsWith("PK")) return MXL_ERROR;
+  if (!/<\s*score-(?:partwise|timewise)\b/.test(body)) {
+    return "This file is not a MusicXML score. Open an uncompressed .musicxml file.";
+  }
+  return "";
+}
+
 export function editedName(filename) {
   const match = String(filename || "score.musicxml").match(/^(.*)(\.musicxml|\.xml)$/i);
   if (match) return `${match[1]} (edited)${match[2]}`;

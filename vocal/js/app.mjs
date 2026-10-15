@@ -1,5 +1,5 @@
 import { createEngine, startTransport } from "./audio.mjs";
-import { editedName, exportScore, findNote, parseScore, playbackEvents, setPitch } from "./musicxml.mjs";
+import { editedName, exportScore, findNote, parseScore, playbackEvents, rejectOpenedFile, setPitch } from "./musicxml.mjs";
 import { PART_COLORS, renderScore, xForQl } from "./render.mjs";
 import { chromaticMove, defaultMix, diatonicMove, samePitch, spellPretty } from "./theory.mjs";
 
@@ -7,7 +7,6 @@ const PART_NAMES = { S: "Soprano", A: "Alto", T: "Tenor", B: "Bass", P: "Piano" 
 const CHANNELS = ["S", "A", "T", "B", "P"];
 
 const els = {
-  open: document.querySelector("#open"),
   example: document.querySelector("#example"),
   export: document.querySelector("#export"),
   file: document.querySelector("#file"),
@@ -57,6 +56,11 @@ function showError(message) {
 
 function loadXml(xml, filename) {
   stopPlayback();
+  const rejected = rejectOpenedFile(filename, xml);
+  if (rejected) {
+    showError(rejected);
+    return;
+  }
   let score;
   try {
     score = parseScore(xml);
@@ -293,11 +297,15 @@ function download() {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-els.open.addEventListener("click", () => els.file.click());
 els.file.addEventListener("change", () => {
   const file = els.file.files?.[0];
   els.file.value = "";
   if (!file) return;
+  const named = rejectOpenedFile(file.name);
+  if (named) {
+    showError(named);
+    return;
+  }
   const reader = new FileReader();
   reader.onload = () => loadXml(String(reader.result || ""), file.name);
   reader.onerror = () => showError("Could not read that file.");
