@@ -21,10 +21,5 @@ jobs:
         run: gitleaks git . --redact --no-banner -v
       - name: PII scan (generic patterns)
         run: python3 scripts/pii_scan.py
-      - name: Vocal pitch editor tests
-        run: node --test vocal/test/roundtrip.test.mjs
       - name: Allowed paths only
-        run: |
-          bad=$(git ls-files | grep -vE '^(README\.md|POLICY\.md|\.nojekyll|\.gitignore|index\.html|grocery/(index|[0-9]{4}-[0-9]{2}-[0-9]{2})\.html|scripts/pii_scan\.py|scripts/pii_allow\.txt|\.github/workflows/scan\.yml|vocal/(index\.html|style\.css|sw\.js|OFL-NotoMusic\.md|fixtures/satb-sample\.musicxml|test/roundtrip\.test\.mjs|js/(theory|musicxml|render|audio|app)\.mjs))$' || true)
-          if [ -n "$bad" ]; then echo "Files outside the public allowlist:"; echo "$bad"; exit 1; fi
-          echo "All tracked files are on the allowlist."
+        run: python3 scripts/path_allow.py

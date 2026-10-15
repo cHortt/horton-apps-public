@@ -1,0 +1,17 @@
+name: vocal
+on:
+  push:
+    paths:
+      - "vocal/**"
+  pull_request:
+    paths:
+      - "vocal/**"
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vocal pitch editor tests
+        run: node --test vocal/test/*.test.mjs
