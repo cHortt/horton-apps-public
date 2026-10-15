@@ -8,10 +8,10 @@ export const PART_COLORS = { S: "#d61f2c", A: "#e86a12", T: "#178a38", B: "#1d4e
 
 const LG = 12;
 const STEP = LG / 2;
-const SA_TOP = 40;
+const SA_TOP = 42;
 const STAFF_H = LG * 4;
-const TB_TOP = SA_TOP + STAFF_H + 58;
-const HEIGHT = TB_TOP + STAFF_H + 34;
+const TB_TOP = SA_TOP + STAFF_H + 78;
+const HEIGHT = TB_TOP + STAFF_H + 36;
 
 const SHARP_STEPS = {
   G: [8, 5, 9, 6, 3, 7, 4],
@@ -235,29 +235,12 @@ function brace(y1, y2) {
 }
 
 function trebleClef(x, gY) {
-  return `<g transform="translate(${x} ${gY})" fill="#111">
-    <path d="M1 -2
-      C8 -2 10 -12 5 -20
-      C1 -26 -8 -24 -8 -16
-      C-8 -10 -2 -8 0 -12
-      C2 -16 -1 -22 3 -26
-      C9 -32 16 -22 13 -10
-      C11 2 5 8 2 22
-      C0 34 8 42 11 34
-      C13 28 7 24 6 30
-      C5 35 10 37 10 32
-      C10 28 6 27 5 30
-      C3 18 8 8 6 -2
-      C4 -8 0 -6 1 -2 Z"/>
-  </g>`;
+  // Baseline sits a little below the G line so the clef's curl lands on it.
+  return `<text x="${x - 6}" y="${gY + 16}" font-family="VocalClef, serif" font-size="46">𝄞</text>`;
 }
 
 function bassClef(x, fY) {
-  return `<g transform="translate(${x} ${fY})" fill="#111" stroke="#111">
-    <path d="M-2 -16 C-16 -16 -18 -2 -16 8 C-14 18 -4 16 -2 8 C0 2 -8 4 -8 -2 C-8 -8 -2 -10 -2 -6" fill="none" stroke-width="2.3" stroke-linecap="round"/>
-    <circle cx="6" cy="-7" r="2.1" stroke="none"/>
-    <circle cx="6" cy="7" r="2.1" stroke="none"/>
-  </g>`;
+  return `<text x="${x - 16}" y="${fY + 14}" font-family="VocalClef, serif" font-size="46">𝄢</text>`;
 }
 
 function drawKey(parts, x, staffTop, clef, fifths) {

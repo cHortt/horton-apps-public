@@ -399,6 +399,11 @@ document.addEventListener("keydown", (event) => {
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
+if (document.fonts?.ready) {
+  document.fonts.ready.then(() => {
+    if (state.score) render();
+  });
+}
 
 applyDefaultMix(true);
 refreshControls();

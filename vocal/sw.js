@@ -1,4 +1,4 @@
-const CACHE = "vocal-pitch-v1";
+const CACHE = "vocal-pitch-v2";
 const ASSETS = [
   "./",
   "./index.html",
