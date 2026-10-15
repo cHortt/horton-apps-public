@@ -16,12 +16,11 @@
     <h1>Vocal pitch editor</h1>
   </div>
   <div class="filebtns">
-    <button type="button" id="open">Open</button>
+    <label for="file" id="open">Open<input id="file" type="file"></label>
     <button type="button" id="example">Example</button>
     <button type="button" id="export" disabled>Export</button>
   </div>
   <p id="filelabel">No file loaded</p>
-  <input id="file" type="file" accept=".musicxml,.xml,application/vnd.recordare.musicxml+xml" hidden>
 </header>
 <p id="error" class="error" hidden></p>
 <div id="stage">
