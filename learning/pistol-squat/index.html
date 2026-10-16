@@ -4,7 +4,7 @@
 <nav><a href="../">All goals</a></nav>
 <h1>3 clean pistol squats, each leg</h1><p class="subtitle">Status: Active, Phase 1. Baseline level 1 of 6, assisted (2026-10-15). Next check-in test: Wed 2026-10-28.</p>
 <h2>Plan</h2>
-<div class="win">Weekdays: on 2–3 tower visits, 3 pistols per leg at your ladder level (1 assisted → 2 light assist → 3 high box → 4 lower box → 5 counterweight → 6 free). Daily: 1-minute ankle drill and a 10–15 s free-leg hold per side. Move up after 3 clean reps per leg on 2 separate days. Check-in Wed Oct 28 with pull-ups and dips.</div>
+<div class="win">Weekdays: on 2–3 tower visits, 3 pistols per leg at your ladder level (1 assisted → 2 light assist → 3 high box → 4 lower box → 5 counterweight → 6 free). Daily: 1-minute ankle drill and a 10–15 s free-leg hold per side. Move up after 3 clean reps per leg on 2 separate days. Ankles: daily pulses, calf stretches and a supported deep squat hold; ~1 in heel lift for practice; knee-to-wall weekly. Check-in Wed Oct 28 with pull-ups and dips (plus knee-to-wall).</div>
 <h2>Lessons</h2><ul>
 <li>Lesson 1: The pistol ladder and how to self-assess (<a href="lessons/0001-pistol-ladder-and-self-assessment.html">web</a> · <a href="lessons/0001-pistol-ladder-and-self-assessment.pdf">PDF</a>)</li></ul>
 <h2>Reference</h2><ul>
@@ -15,12 +15,13 @@
 <table id="log"><thead><tr><th>Date</th><th>Type</th><th>Leg</th><th>Level</th><th>Variation</th><th>Sets × reps</th><th>Notes</th></tr></thead><tbody></tbody></table>
 <p class="side">Raw data: <a href="progress/log.csv">progress/log.csv</a></p>
 <script>
-function parse(t){const L=t.trim().split(/?
+function parse(t){const L=t.trim().split(/
+?
 /);const h=L.shift().split(',');return L.filter(Boolean).map(l=>{const c=l.split(',');const o={};h.forEach((k,i)=>o[k]=i<h.length-1?c[i]:c.slice(i).join(','));return o;});}
 fetch('progress/log.csv',{cache:'no-store'}).then(r=>r.text()).then(t=>{const rows=parse(t);
-const tb=document.querySelector('#log tbody');rows.slice().reverse().forEach(r=>{const tr=document.createElement('tr');[r.date,r.type,r.leg,r.level,r.variation,r.sets+' × '+r.reps,r.notes].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});tb.appendChild(tr)});
+const tb=document.querySelector('#log tbody');rows.slice().reverse().forEach(r=>{const tr=document.createElement('tr');[r.date,r.type,r.leg,r.level,r.variation,(r.type==='knee-to-wall'?r.reps+' in':r.sets+' × '+r.reps),r.notes].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});tb.appendChild(tr)});
 const dates=[...new Set(rows.map(r=>r.date))].sort();
-const lv=(d,leg)=>{const m=rows.filter(r=>r.date===d&&r.leg===leg);return m.length?Math.max(...m.map(r=>+r.level)):null};
+const lv=(d,leg)=>{const m=rows.filter(r=>r.date===d&&r.leg===leg&&r.type!=='knee-to-wall');return m.length?Math.max(...m.map(r=>+r.level)):null};
 if(window.Chart)new Chart(document.getElementById('chart'),{type:'line',data:{labels:dates,datasets:[
 {label:'Left leg level',data:dates.map(d=>lv(d,'left')),borderColor:'#a00000',backgroundColor:'#a00000',spanGaps:true,pointRadius:5},
 {label:'Right leg level',data:dates.map(d=>lv(d,'right')),borderColor:'#555',backgroundColor:'#555',spanGaps:true,pointRadius:5,borderDash:[5,4]}]},
