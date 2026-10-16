@@ -7,12 +7,12 @@ This is the `learning/` applet in [horton-apps-public](https://github.com/cHortt
 ## Structure
 - `index.html`: home page listing every goal and its status
 - `assets/style.css`: shared styling
-- `<goal>/` (one folder per goal, e.g. `pullups-20/`, `dips-20/`)
+- `<goal>/` (one folder per goal, e.g. `pullups-20/`, `dips-20/`, `pistol-squat/`)
   - `MISSION.md`, `NOTES.md`, `RESOURCES.md`
   - `learning-records/`: dated notes on what was learned/decided
   - `lessons/`, `reference/`: HTML + PDF
   - `assets/`: goal-specific CSS/JS
-  - `progress/log.csv`: `date,type,sets,reps_per_set,total,notes`
+  - `progress/log.csv`: `date,type,sets,reps_per_set,total,notes` (pistol-squat: `date,type,leg,level,variation,sets,reps,notes`)
   - `index.html`: plan summary, links, chart, and log (rendered from the CSV)
 
 ## Public repo rules
