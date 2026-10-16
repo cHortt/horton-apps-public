@@ -7,7 +7,7 @@ This is the `learning/` applet in [horton-apps-public](https://github.com/cHortt
 ## Structure
 - `index.html`: home page listing every goal and its status
 - `assets/style.css`: shared styling
-- `<goal>/` (one folder per goal, e.g. `pullups-20/`)
+- `<goal>/` (one folder per goal, e.g. `pullups-20/`, `dips-20/`)
   - `MISSION.md`, `NOTES.md`, `RESOURCES.md`
   - `learning-records/`: dated notes on what was learned/decided
   - `lessons/`, `reference/`: HTML + PDF
