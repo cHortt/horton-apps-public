@@ -1,22 +1,60 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Smokies trip</title>
-<style>body{font:17px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;max-width:720px;margin:0 auto;padding:24px 16px;color:#1f2933}
-h1{margin:0 0 4px}h2{margin-top:28px;border-bottom:1px solid #e4e7eb;padding-bottom:4px}.sub{color:#616e7c}
-a{color:#2b6cb0}.big{display:block;padding:14px 16px;border:1px solid #e4e7eb;border-radius:12px;text-decoration:none;font-weight:700;margin:10px 0}
-.big small{display:block;font-weight:400;color:#616e7c}.day{border-left:4px solid #2a6f4e;padding:4px 12px;margin:14px 0}.day h3{margin:0 0 4px;font-size:17px}
-ul{padding-left:20px}li{margin:4px 0}footer{font-size:13px;color:#616e7c;margin-top:32px}</style></head>
+<style>
+:root{--cream:#f7f3ea;--ink:#25302b;--muted:#5d6b63;--forest:#2f5a43;--slate:#4a6378;--rust:#b5562b;--amber:#c9892b;--card:#fffdf8;--line:#e3dccb}
+*{box-sizing:border-box}
+body{margin:0;background:var(--cream);color:var(--ink);font:17px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+h1,h2,h3{font-family:Georgia,"Iowan Old Style","Palatino Linotype",Palatino,serif;font-weight:700}
+.hero{position:relative;background:linear-gradient(180deg,#c9d6df 0%,#dfe5e0 55%,var(--cream) 100%);overflow:hidden}
+.hero svg{position:absolute;left:0;bottom:0;width:100%;height:150px;display:block}
+.hero .t{position:relative;max-width:760px;margin:0 auto;padding:28px 18px 150px}
+.hero h1{margin:0;font-size:clamp(30px,7vw,46px);color:#1f3a2c;letter-spacing:.3px}
+.hero p{margin:4px 0 0;color:#3c4f5c}
+main{max-width:760px;margin:0 auto;padding:0 18px 32px}
+h2{color:var(--forest);font-size:24px;margin:30px 0 12px;display:flex;align-items:center;gap:8px}
+h2::after{content:"";flex:1;height:1px;background:var(--line)}
+.docs{display:grid;gap:12px}
+@media(min-width:640px){.docs{grid-template-columns:1fr 1fr}}
+.doc{display:block;padding:16px 18px;background:var(--card);border:1px solid var(--line);border-left:5px solid var(--rust);border-radius:14px;text-decoration:none;color:var(--ink);font-weight:700;box-shadow:0 2px 8px rgba(47,90,67,.08)}
+.doc:hover{box-shadow:0 4px 14px rgba(47,90,67,.16)}
+.doc small{display:block;font-weight:400;color:var(--muted)}
+.day{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin:12px 0;box-shadow:0 2px 8px rgba(47,90,67,.07)}
+.day h3{margin:0 0 6px;font-size:19px;color:var(--forest);display:flex;align-items:center;gap:10px}
+.day .n{flex:none;display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--slate);color:#fff;font:700 14px/1 -apple-system,Arial,sans-serif}
+.day.park .n{background:var(--rust)}
+.day ul{margin:0;padding-left:20px}.day li{margin:3px 0}
+.day a{color:var(--slate)}
+.note{background:#eef2ec;border-radius:14px;padding:12px 18px}
+.note ul{margin:0;padding-left:20px}
+.check{list-style:none;padding:0;margin:0}
+.check li{position:relative;padding:10px 12px 10px 44px;background:var(--card);border:1px solid var(--line);border-radius:12px;margin:8px 0}
+.check li::before{content:"";position:absolute;left:14px;top:50%;width:18px;height:18px;margin-top:-9px;border:2px solid var(--forest);border-radius:5px;background:#fff}
+footer{font-size:13px;color:var(--muted);margin-top:34px;text-align:center}
+footer a{color:var(--slate)}
+</style></head>
 <body>
-<h1>Smokies trip</h1><div class="sub">5-day Smoky Mountain Christmas trip · mountain times are Eastern</div>
-
+<header class="hero">
+<svg viewBox="0 70 1200 190" preserveAspectRatio="none" aria-hidden="true">
+<path d="M 0,150 C 120,110 220,130 330,105 C 450,80 560,120 680,95 C 800,70 920,110 1040,90 C 1110,80 1160,95 1200,88 V 260 H 0 Z" fill="#a9bac6" opacity=".75"/>
+<path d="M 0,185 C 140,150 250,170 380,145 C 520,120 610,165 760,140 C 900,118 1010,155 1200,130 V 260 H 0 Z" fill="#8aa29a" opacity=".8"/>
+<defs><linearGradient id="m i s t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f2f4f0" stop-opacity="0"/><stop offset=".5" stop-color="#f2f4f0" stop-opacity=".6"/><stop offset="1" stop-color="#f2f4f0" stop-opacity="0"/></linearGradient></defs><rect x="0" y="140" width="1200" height="70" fill="url(#mist)"/>
+<path d="M 0,215 C 160,190 300,205 450,188 C 600,172 720,205 880,188 C 1020,174 1120,196 1200,186 V 260 H 0 Z" fill="#5f806c" opacity=".9"/>
+<path d="M 0,245 C 180,228 360,240 540,230 C 720,220 900,242 1200,228 V 260 H 0 Z" fill="#f7f3ea"/>
+</svg>
+<div class="t"><h1>Smokies trip</h1><p>5-day Smoky Mountain Christmas trip · mountain times are Eastern</p></div>
+</header>
+<main>
 <h2>Documents</h2>
-<a class="big" href="Dollywood-Itinerary.pdf">Dollywood itinerary (PDF)<small>Both park days</small></a>
-<a class="big" href="Dollywood-Map.pdf">Annotated park map + key (PDF)</a>
+<div class="docs">
+<a class="doc" href="Dollywood-Itinerary.pdf">🎢 Dollywood itinerary (PDF)<small>Both park days</small></a>
+<a class="doc" href="Dollywood-Map.pdf">🗺️ Annotated park map + key (PDF)<small>Stop numbers and key</small></a>
+</div>
 
 <h2>Trip days</h2>
-<div class="day"><h3>Trip Day 1 — Travel up</h3><ul><li>Drive up from home, with stops.</li></ul></div>
-<div class="day"><h3>Trip Day 2 — Dollywood Park Day 1</h3><ul><li>See the itinerary and map PDFs above.</li></ul></div>
-<div class="day"><h3>Trip Day 3 — Smokies drive + Stampede</h3><ul>
+<div class="day"><h3><span class="n">1</span>🚗 Travel up</h3><ul><li>Drive up from home, with stops.</li></ul></div>
+<div class="day park"><h3><span class="n">2</span>⭐ Dollywood Park Day 1</h3><ul><li>See the itinerary and map PDFs above.</li></ul></div>
+<div class="day"><h3><span class="n">3</span>🌲 Smokies drive + Stampede</h3><ul>
 <li>Drive through Gatlinburg onto Newfound Gap Rd.</li>
 <li>Picnic lunch at Chimney Tops Picnic Area.</li>
 <li>Optional scenic drive toward Newfound Gap.</li>
@@ -24,14 +62,15 @@ ul{padding-left:20px}li{margin:4px 0}footer{font-size:13px;color:#616e7c;margin-
 <li>Sunset is around 5:30 PM, and it's cold at elevation.</li>
 <li>Rest in the afternoon.</li>
 <li>8:30 PM Dixie Stampede in Pigeon Forge, ending around 10 PM. The toddler is free on a lap.</li></ul></div>
-<div class="day"><h3>Trip Day 4 — Dollywood Park Day 2</h3><ul><li>See the itinerary and map PDFs above.</li></ul></div>
-<div class="day"><h3>Trip Day 5 — Travel home</h3><ul><li>Check out and head home mid-morning.</li></ul></div>
+<div class="day park"><h3><span class="n">4</span>⭐ Dollywood Park Day 2</h3><ul><li>See the itinerary and map PDFs above.</li></ul></div>
+<div class="day"><h3><span class="n">5</span>🚗 Travel home</h3><ul><li>Check out and head home mid-morning.</li></ul></div>
 
 <h2>Weather and packing</h2>
-<ul><li>Dry weather expected, with lows in the mid-30s °F.</li><li>Pack layers, hats and gloves, plus a stroller rain/wind cover.</li></ul>
+<div class="note"><ul><li>Dry weather expected, with lows in the mid-30s °F.</li><li>Pack layers, hats and gloves, plus a stroller rain/wind cover.</li></ul></div>
 
 <h2>Checklist</h2>
-<ul><li>Dollywood tickets for both park days</li><li>Stampede seats for the 8:30 PM show</li><li>Park scooter reservation at least 48 hours ahead, if needed</li><li>National park parking tag for the Smokies drive</li></ul>
+<ul class="check"><li>Dollywood tickets for both park days</li><li>Stampede seats for the 8:30 PM show</li><li>Park scooter reservation at least 48 hours ahead, if needed</li><li>National park parking tag for the Smokies drive</li></ul>
 
 <footer>Static page with no tracking. <a href="../">All pages</a></footer>
+</main>
 </body></html>
