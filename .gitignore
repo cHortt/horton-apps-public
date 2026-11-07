@@ -12,3 +12,5 @@
 *.txt
 !scripts/pii_allow.txt
 __pycache__/
+# The smokies-trip page ships its rendered PDFs.
+!smokies-trip/*.pdf
