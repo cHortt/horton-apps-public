@@ -93,11 +93,12 @@ function onsetKey(note) {
 }
 
 // One vocal staff. A measure that uses another voice keeps each voice's part:
-// voice 1 is Melody, 2 is High, 3 is Low, 4 is Bass. A measure that stays in
-// voice 1 stacks parts by the note's place in the file, not by its current
-// pitch, so an edit that crosses a neighbor does not swap parts on reload.
-// topFirst is MusicXML chord order (first note is the top). MuseScore stores
-// a chord low to high, so the last note is the top.
+// voice 1 is Melody, 2 is High, 3 is Low, 4 is Bass. A voice that holds only
+// rests does not count. A measure that stays in voice 1 stacks by file order,
+// not by the note's current pitch: the top written note is Melody and the
+// next one down is High, including a two-note chord. topFirst is MusicXML
+// order (first note is the top). MuseScore stores a chord low to high, so
+// the last note is the top.
 export function assignSingleStaffParts(measures, { topFirst = false } = {}) {
   for (const measure of measures) {
     const pitched = measure.notes.filter((note) => note.pitch && !note.grace);
@@ -493,6 +494,8 @@ export function exportScore(score) {
 
 export const MXL_ERROR =
   "Compressed .mxl files aren't supported. Export uncompressed MusicXML (.musicxml) and open that.";
+
+export const NO_STAFF_ERROR = "This file has no staff with notes to edit.";
 
 // The file picker accepts every file. This checks the name and the bytes
 // before the score parser runs. .mxl is a zip package, which this editor does not read.

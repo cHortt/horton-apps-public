@@ -2,6 +2,7 @@
 // Hit targets are returned separately so a tap can ignore every part except the active one.
 
 import { isEdited } from "./musicxml.mjs";
+import { NO_STAFF_ERROR } from "./musicxml.mjs";
 import { staffStep } from "./theory.mjs";
 
 export const PART_COLORS = { S: "#d61f2c", A: "#e86a12", T: "#178a38", B: "#1d4ed8" };
@@ -55,7 +56,7 @@ function gutterWidth(fifths) {
 export function renderScore(score, state) {
   const sa = score.parts.find((p) => p.role === "SA");
   const tb = score.parts.find((p) => p.role === "TB") || null;
-  if (!sa) throw new Error("This file needs a vocal staff.");
+  if (!sa) throw new Error(NO_STAFF_ERROR);
   const count = tb ? Math.min(sa.measures.length, tb.measures.length) : sa.measures.length;
   const fifths = sa.measures[0]?.fifths ?? 0;
   const gutter = gutterWidth(fifths);

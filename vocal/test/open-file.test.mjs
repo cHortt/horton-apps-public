@@ -23,6 +23,19 @@ test("an uncompressed partwise score is accepted, and other files are not", () =
   assert.equal(rejectOpenedFile("empty.musicxml", ""), "This file is not a MusicXML score. Open an uncompressed .musicxml file.");
 });
 
+test("an unlabeled score can ask which staff to edit", () => {
+  assert.match(indexHtml, /id="chooser"/);
+  assert.match(indexHtml, /Choose the staff to edit/);
+  assert.match(indexHtml, /The other staves play along and are not edited/);
+  assert.match(appSource, /needsStaffChoice/);
+  assert.match(appSource, /vocalStaffIndex/);
+  assert.match(appSource, /NO_STAFF_ERROR/);
+  assert.doesNotMatch(appSource, /needs a vocal staff/);
+  const chooserRule = css.slice(css.indexOf("#chooser:not([hidden])"), css.indexOf("#chooser:not([hidden])") + 240);
+  assert.match(chooserRule, /padding:/);
+  assert.doesNotMatch(css, /#chooser\s*\{[^}]*display\s*:/);
+});
+
 test("Open is a label for a file input with no accept filter and no hidden attribute", () => {
   assert.match(indexHtml, /<label for="file" id="open">Open<input id="file" type="file"><\/label>/);
   assert.doesNotMatch(indexHtml, /<input[^>]*id="file"[^>]*\baccept=/);
