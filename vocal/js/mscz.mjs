@@ -4,7 +4,7 @@
 // alone. Export splices pitch, tpc, tpc2, and an explicit accidental on the
 // notes that actually changed, and copies every other zip entry through.
 
-import { assignSingleStaffParts, child, isEdited, parseDocument, textOf } from "./musicxml.mjs";
+import { assignSingleStaffParts, child, isEdited, NO_STAFF_ERROR, parseDocument, textOf } from "./musicxml.mjs";
 import { pitchToMidi } from "./theory.mjs";
 import { entryData, readZip, writeZip } from "./zip.mjs";
 
@@ -155,12 +155,70 @@ function clefSign(type) {
   return String(type || "G").startsWith("F") ? "F" : "G";
 }
 
+const VOCAL_NAME = /vocal|melody|harmony|soprano|alto|tenor|bass|choir|voice|sing|lead/;
+const PIANO_NAME = /piano|keyboard|keys|organ/;
+
+function nameBlob(meta) {
+  return `${meta.trackName} ${meta.longName} ${meta.shortName} ${meta.instrumentId}`.toLowerCase();
+}
+
+function isClearlyVocal(meta) {
+  // A voice.* instrument still counts when longName, shortName, and trackName are blank.
+  return VOCAL_NAME.test(nameBlob(meta));
+}
+
 function kindOf(meta) {
-  const blob = `${meta.trackName} ${meta.longName} ${meta.shortName} ${meta.instrumentId}`.toLowerCase();
-  if (/vocal|melody|harmony|soprano|alto|tenor|bass|choir|voice|sing|lead/.test(blob)) return "vocal";
-  if (/piano|keyboard|keys|organ/.test(blob)) return "piano";
+  if (isClearlyVocal(meta)) return "vocal";
+  if (PIANO_NAME.test(nameBlob(meta))) return "piano";
   if (meta.staffCount >= 2) return "piano";
   return "vocal";
+}
+
+function staffHasLyrics(staff) {
+  return staff.measures.some((measure) => measure.notes.some((note) => note.lyric));
+}
+
+function staffHasNotes(staff) {
+  return staff.measures.some((measure) => measure.notes.some((note) => note.pitch && !note.grace));
+}
+
+function choiceLabel(staff) {
+  const name = [staff.meta.trackName, staff.meta.longName, staff.meta.shortName]
+    .map((part) => String(part || "").trim())
+    .find(Boolean);
+  const sign = staff.measures[0]?.clef?.sign === "F" ? "bass clef" : "treble clef";
+  const where = `Staff ${staff.staffIndex + 1}`;
+  return name ? `${where}, ${name}, ${sign}` : `${where}, ${sign}`;
+}
+
+// Names decide first. With no named voice, lyrics mark the staff to edit, and
+// so does a score that has only one staff. Several remaining staves are a
+// choice. Rest-only staves are not choices. Nothing here is written back.
+function selectUnlabeled(staves, vocalStaffIndex) {
+  const lyric = staves.filter(staffHasLyrics);
+  if (lyric.length) {
+    const chosen = new Set(lyric);
+    return { vocal: lyric, piano: staves.filter((staff) => !chosen.has(staff)) };
+  }
+  if (staves.length === 1) {
+    if (!staffHasNotes(staves[0])) throw new Error(NO_STAFF_ERROR);
+    return { vocal: staves, piano: [] };
+  }
+  const usable = staves.filter(staffHasNotes);
+  if (vocalStaffIndex == null) {
+    if (!usable.length) throw new Error(NO_STAFF_ERROR);
+    if (usable.length === 1) {
+      const only = usable[0];
+      return { vocal: [only], piano: staves.filter((staff) => staff !== only) };
+    }
+    return {
+      needsStaffChoice: true,
+      choices: usable.map((staff) => ({ index: staff.staffIndex, label: choiceLabel(staff) })),
+    };
+  }
+  const staff = staves.find((item) => item.staffIndex === vocalStaffIndex);
+  if (!staff || !staffHasNotes(staff)) throw new Error(NO_STAFF_ERROR);
+  return { vocal: [staff], piano: staves.filter((item) => item !== staff) };
 }
 
 function durationOf(xml, el, measureFrac) {
@@ -491,6 +549,45 @@ function finishNotes(part) {
   }
 }
 
+function assembleParts(vocal, piano) {
+  const parts = [];
+  if (vocal.length <= 1) {
+    const staff = vocal[0];
+    if (staff) {
+      assignOneStaff(staff.measures);
+      const part = {
+        id: "vocal",
+        name: staff.meta.trackName || staff.meta.longName || "Vocal",
+        role: "SA",
+        staffLabel: "Vocal",
+        measures: staff.measures,
+      };
+      finishNotes(part);
+      parts.push(part);
+    }
+  } else {
+    const roles = [
+      { role: "SA", pair: ["S", "A"], label: "SA" },
+      { role: "TB", pair: ["T", "B"], label: "TB" },
+    ];
+    vocal.forEach((staff, index) => {
+      const spec = roles[Math.min(index, roles.length - 1)];
+      assignVoices(staff.measures, spec.pair, true);
+      const part = {
+        id: spec.role + index,
+        name: staff.meta.trackName || staff.meta.longName || spec.label,
+        role: index < 2 ? spec.role : "extra",
+        staffLabel: spec.label,
+        measures: staff.measures,
+      };
+      finishNotes(part);
+      parts.push(part);
+    });
+  }
+  if (piano.length) parts.push(mergePiano(piano));
+  return parts;
+}
+
 function mergePiano(staves) {
   const count = Math.max(0, ...staves.map((staff) => staff.measures.length));
   const measures = [];
@@ -524,7 +621,7 @@ function mergePiano(staves) {
   return { id: "piano", name: "Piano", role: "piano", measures };
 }
 
-export function openMscz(bytes) {
+export function openMscz(bytes, options = {}) {
   let entries;
   try {
     entries = readZip(bytes);
@@ -563,43 +660,19 @@ export function openMscz(bytes) {
   const staffEls = scoreEl.children.filter((el) => el.tag === "Staff" && el.attrs.id);
   const staves = staffEls.map((el, index) => parseStaff(xml, el, metas[index] || { staffCount: 1, trackName: "", longName: "", shortName: "", instrumentId: "" }, index));
   const unresolvedTies = linkTies(staves);
-  const vocal = staves.filter((staff) => staff.kind === "vocal");
-  const piano = staves.filter((staff) => staff.kind === "piano");
-  const parts = [];
-  if (vocal.length <= 1) {
-    const staff = vocal[0];
-    if (staff) {
-      assignOneStaff(staff.measures);
-      const part = {
-        id: "vocal",
-        name: staff.meta.trackName || staff.meta.longName || "Vocal",
-        role: "SA",
-        staffLabel: "Vocal",
-        measures: staff.measures,
-      };
-      finishNotes(part);
-      parts.push(part);
-    }
+  const requested = Number.isInteger(options.vocalStaffIndex) ? options.vocalStaffIndex : null;
+  let vocal;
+  let piano;
+  if (staves.some((staff) => isClearlyVocal(staff.meta))) {
+    vocal = staves.filter((staff) => staff.kind === "vocal");
+    piano = staves.filter((staff) => staff.kind === "piano");
   } else {
-    const roles = [
-      { role: "SA", pair: ["S", "A"], label: "SA" },
-      { role: "TB", pair: ["T", "B"], label: "TB" },
-    ];
-    vocal.forEach((staff, index) => {
-      const spec = roles[Math.min(index, roles.length - 1)];
-      assignVoices(staff.measures, spec.pair, true);
-      const part = {
-        id: spec.role + index,
-        name: staff.meta.trackName || staff.meta.longName || spec.label,
-        role: index < 2 ? spec.role : "extra",
-        staffLabel: spec.label,
-        measures: staff.measures,
-      };
-      finishNotes(part);
-      parts.push(part);
-    });
+    const selected = selectUnlabeled(staves, requested);
+    if (selected.needsStaffChoice) return { needsStaffChoice: true, choices: selected.choices };
+    vocal = selected.vocal;
+    piano = selected.piano;
   }
-  if (piano.length) parts.push(mergePiano(piano));
+  const parts = assembleParts(vocal, piano);
   const quarterBpm = staves.map((staff) => staff.quarterBpm).find((tempo) => tempo != null) ?? 120;
   return {
     format: "mscz",

@@ -1,6 +1,6 @@
 import { createEngine, startTransport } from "./audio.mjs";
 import { exportMscz, openMscz } from "./mscz.mjs";
-import { MXL_ERROR, editedName, exportScore, findNote, parseScore, playbackEvents, rejectOpenedFile, setPitch } from "./musicxml.mjs";
+import { MXL_ERROR, NO_STAFF_ERROR, editedName, exportScore, findNote, parseScore, playbackEvents, rejectOpenedFile, setPitch } from "./musicxml.mjs";
 import { PART_COLORS, renderScore, xForQl } from "./render.mjs";
 import { chromaticMove, defaultMix, diatonicMove, samePitch, spellPretty } from "./theory.mjs";
 import { isZip, readZip } from "./zip.mjs";
@@ -17,6 +17,8 @@ const els = {
   scroll: document.querySelector("#scroll"),
   gutter: document.querySelector("#gutter"),
   error: document.querySelector("#error"),
+  chooser: document.querySelector("#chooser"),
+  chooserList: document.querySelector("#chooser-list"),
   readout: document.querySelector("#readout"),
   play: document.querySelector("#play"),
   mixerBtn: document.querySelector("#mixer-btn"),
@@ -60,9 +62,11 @@ function acceptScore(score, filename) {
   const hasUpper = score.parts.some((p) => p.role === "SA");
   const hasLower = score.parts.some((p) => p.role === "TB");
   if (!hasUpper && !hasLower) {
-    showError("This file needs a vocal staff.");
+    hideChooser();
+    showError(NO_STAFF_ERROR);
     return;
   }
+  hideChooser();
   showError("");
   state.score = score;
   state.filename = filename;
@@ -81,8 +85,41 @@ function acceptScore(score, filename) {
   render();
 }
 
+function hideChooser() {
+  els.chooser.hidden = true;
+  els.chooserList.replaceChildren();
+}
+
+function showStaffChoice(choices, bytes, filename) {
+  showError("");
+  stopPlayback();
+  state.score = null;
+  state.layout = null;
+  state.selectedId = null;
+  state.undo = [];
+  state.redo = [];
+  state.filename = filename;
+  els.label.textContent = filename;
+  if (els.empty) els.empty.hidden = true;
+  els.export.disabled = true;
+  els.gutter.replaceChildren();
+  els.scroll.replaceChildren();
+  els.chooser.hidden = false;
+  els.chooserList.replaceChildren();
+  for (const choice of choices) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = choice.label;
+    button.addEventListener("click", () => loadMscz(bytes, filename, choice.index));
+    els.chooserList.appendChild(button);
+  }
+  refreshControls();
+  els.readout.textContent = "Choose the staff to edit";
+}
+
 function loadXml(xml, filename) {
   stopPlayback();
+  hideChooser();
   const rejected = rejectOpenedFile(filename, xml);
   if (rejected) {
     showError(rejected);
@@ -98,16 +135,22 @@ function loadXml(xml, filename) {
   acceptScore(score, filename);
 }
 
-function loadMscz(bytes, filename) {
+function loadMscz(bytes, filename, vocalStaffIndex) {
   stopPlayback();
-  let score;
+  let opened;
   try {
-    score = openMscz(bytes);
+    const options = Number.isInteger(vocalStaffIndex) ? { vocalStaffIndex } : undefined;
+    opened = openMscz(bytes, options);
   } catch (error) {
+    hideChooser();
     showError(error.message || "Could not read that MuseScore file.");
     return;
   }
-  acceptScore(score, filename);
+  if (opened.needsStaffChoice) {
+    showStaffChoice(opened.choices, bytes, filename);
+    return;
+  }
+  acceptScore(opened, filename);
 }
 
 function render() {
@@ -326,6 +369,7 @@ els.file.addEventListener("change", () => {
   if (!file) return;
   const named = rejectOpenedFile(file.name);
   if (named) {
+    hideChooser();
     showError(named);
     return;
   }
@@ -337,12 +381,16 @@ els.file.addEventListener("change", () => {
       return;
     }
     if (isZip(bytes)) {
+      hideChooser();
       showError(MXL_ERROR);
       return;
     }
     loadXml(new TextDecoder("utf-8").decode(bytes), file.name);
   };
-  reader.onerror = () => showError("Could not read that file.");
+  reader.onerror = () => {
+    hideChooser();
+    showError("Could not read that file.");
+  };
   reader.readAsArrayBuffer(file);
 });
 

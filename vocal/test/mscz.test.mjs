@@ -5,7 +5,7 @@ import test from "node:test";
 import { zipSync } from "../js/fflate.mjs";
 import { chromaticMove, diatonicMove, pitchToMidi } from "../js/theory.mjs";
 import { exportMscz, openMscz, pitchFromMidiTpc, tpcFromPitch } from "../js/mscz.mjs";
-import { editedName, exportScore, isEdited, iterNotes, parseScore, playbackEvents, setPitch } from "../js/musicxml.mjs";
+import { NO_STAFF_ERROR, editedName, exportScore, isEdited, iterNotes, parseScore, playbackEvents, setPitch } from "../js/musicxml.mjs";
 import { renderScore } from "../js/render.mjs";
 import { crc32, entryData, readZip, writeZip } from "../js/zip.mjs";
 
@@ -298,6 +298,11 @@ test("SA and TB staves sit above a piano that is not editable", () => {
   assert.match(view.gutter, />SA</);
   assert.match(view.gutter, />TB</);
   assert.match(view.music, /height="252"/);
+  const ignored = openMscz(pack(SATB_XML), { vocalStaffIndex: 2 });
+  assert.deepEqual(
+    ignored.parts.map((part) => part.role),
+    ["SA", "TB", "piano"],
+  );
 });
 
 test("an unedited export keeps every zip entry byte for byte", () => {
@@ -546,6 +551,488 @@ test("MusicXML still draws both vocal staves", () => {
   assert.match(view.music, /height="252"/);
   assert.match(view.gutter, />SA</);
   assert.match(view.gutter, />TB</);
+});
+
+const UNLABELED_LYRIC_PIANO = `<?xml version="1.0" encoding="UTF-8"?>
+<museScore version="4.70">
+  <programVersion>4.7.7</programVersion>
+  <Score>
+    <Division>480</Division>
+    <Part id="1">
+      <Staff><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff>
+      <trackName></trackName>
+      <Instrument id="grand-piano">
+        <trackName></trackName>
+        <instrumentId>keyboard.piano.grand</instrumentId>
+      </Instrument>
+    </Part>
+    <Staff id="1">
+      <Measure>
+        <voice>
+          <Clef><concertClefType>G</concertClefType></Clef>
+          <KeySig><concertKey>0</concertKey></KeySig>
+          <TimeSig><sigN>4</sigN><sigD>4</sigD></TimeSig>
+          <Harmony><harmonyInfo><name>sus</name><root>16</root></harmonyInfo></Harmony>
+          <Chord>
+            <durationType>quarter</durationType>
+            <Lyrics><syllabic>single</syllabic><text>la</text></Lyrics>
+            <Note><pitch>60</pitch><tpc>14</tpc></Note>
+            <Note><pitch>64</pitch><tpc>18</tpc></Note>
+            <Note>
+              <Accidental><role>1</role><subtype>accidentalSharp</subtype></Accidental>
+              <pitch>66</pitch><tpc>21</tpc><tpc2>21</tpc2>
+            </Note>
+          </Chord>
+          <Chord><durationType>quarter</durationType><Note><pitch>62</pitch><tpc>16</tpc></Note></Chord>
+        </voice>
+      </Measure>
+    </Staff>
+  </Score>
+</museScore>
+`;
+
+function pianoScore(staves, { trackName = "", longName = "" } = {}) {
+  const heads = staves
+    .map(() => `<Staff><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff>`)
+    .join("");
+  const name = longName ? `<longName>${longName}</longName>` : "";
+  const bodies = staves
+    .map((staff, index) => {
+      const lyric = staff.lyric ? `<Lyrics><text>${staff.lyric}</text></Lyrics>` : "";
+      const chord = staff.rest
+        ? `<Rest><durationType>whole</durationType></Rest>`
+        : `<Chord><durationType>quarter</durationType>${lyric}<Note><pitch>${staff.midi}</pitch><tpc>${staff.tpc}</tpc></Note></Chord>`;
+      return `<Staff id="${index + 1}"><Measure><voice><Clef><concertClefType>${staff.clef || "G"}</concertClefType></Clef><KeySig><concertKey>0</concertKey></KeySig><TimeSig><sigN>4</sigN><sigD>4</sigD></TimeSig>${chord}</voice></Measure></Staff>`;
+    })
+    .join("");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<museScore version="4.70">
+  <programVersion>4.7.7</programVersion>
+  <Score>
+    <Division>480</Division>
+    <Part id="1">${heads}<trackName>${trackName}</trackName><Instrument id="grand-piano">${name}<instrumentId>keyboard.piano.grand</instrumentId></Instrument></Part>
+    ${bodies}
+  </Score>
+</museScore>
+`;
+}
+
+test("an unlabeled piano instrument with lyrics and stacked chords opens as one vocal staff", () => {
+  const packed = pack(UNLABELED_LYRIC_PIANO);
+  const score = openMscz(packed);
+  assert.equal(score.needsStaffChoice, undefined);
+  assert.deepEqual(
+    score.parts.map((part) => part.role),
+    ["SA"],
+  );
+  assert.equal(score.parts[0].staffLabel, "Vocal");
+  assert.equal(score.parts[0].name, "Vocal");
+  const chord = score.parts[0].measures[0].notes.filter((note) => note.pitch && note.startQl === 0);
+  assert.deepEqual(
+    chord.map((note) => note.parts[0]),
+    ["T", "A", "S"],
+  );
+  assert.equal(chord.find((note) => note.parts[0] === "S").lyric.text, "la");
+  assert.equal(score.parts[0].measures[0].harmonies[0].text, "Dsus");
+  const view = renderScore(score, { activePart: "S", selectedId: null, showChanges: false, playMeasure: 0 });
+  assert.match(view.gutter, />Vocal</);
+  assert.match(view.music, /height="126"/);
+
+  const again = readZip(exportMscz(score));
+  const original = readZip(packed);
+  for (let i = 0; i < original.length; i++) {
+    assert.deepEqual(again[i].compressed, original[i].compressed, original[i].name);
+  }
+
+  const top = chord.find((note) => note.parts[0] === "S");
+  const next = diatonicMove(top.pitch, 0, 1);
+  setPitch(score, top.id, next);
+  const out = exportMscz(score);
+  const afterEntries = readZip(out);
+  for (let i = 0; i < original.length; i++) {
+    if (/\.mscx$/i.test(original[i].name)) continue;
+    assert.deepEqual(afterEntries[i].compressed, original[i].compressed, original[i].name);
+  }
+  const afterXml = new TextDecoder().decode(entryData(afterEntries.find((entry) => /\.mscx$/i.test(entry.name))));
+  const after = openMscz(out);
+  const edited = iterNotes(score).filter(isEdited);
+  assert.equal(edited.length, 1);
+  assert.equal(
+    cutRanges(afterXml, changedSpans(iterNotes(after).find((note) => note.id === top.id))),
+    cutRanges(UNLABELED_LYRIC_PIANO, changedSpans(top)),
+  );
+  assert.match(afterXml, /<instrumentId>keyboard\.piano\.grand<\/instrumentId>/);
+  assert.doesNotMatch(afterXml, /longName/);
+  assert.match(afterXml, /<trackName><\/trackName>/);
+  assert.match(afterXml, /<text>la<\/text>/);
+  assert.match(afterXml, /<name>sus<\/name>/);
+  assert.match(afterXml, /<subtype>accidentalNatural<\/subtype>/);
+  assert.equal(afterXml.split("<tpc2>").length, UNLABELED_LYRIC_PIANO.split("<tpc2>").length);
+  assert.equal(iterNotes(after).filter((note) => note.pitch && pitchToMidi(note.pitch) === 62).length, 1);
+  assert.deepEqual(iterNotes(after).find((note) => note.id === top.id).pitch, next);
+});
+
+test("lyrics pick the staff when no part is named as a voice", () => {
+  const xml = pianoScore(
+    [
+      { midi: 48, tpc: 14, clef: "F" },
+      { midi: 72, tpc: 14, clef: "G", lyric: "la" },
+    ],
+  );
+  const score = openMscz(pack(xml));
+  assert.equal(score.needsStaffChoice, undefined);
+  assert.deepEqual(
+    score.parts.map((part) => part.role),
+    ["SA", "piano"],
+  );
+  assert.equal(pitchToMidi(score.parts[0].measures[0].notes.find((note) => note.pitch).pitch), 72);
+  assert.ok(score.parts[1].measures[0].notes.filter((note) => note.pitch).every((note) => note.parts.length === 0));
+  assert.ok(playbackEvents(score).some((event) => event.channel === "P" && event.midi === 48));
+  const both = pianoScore(
+    [
+      { midi: 72, tpc: 14, lyric: "la" },
+      { midi: 48, tpc: 14, clef: "F", lyric: "lo" },
+    ],
+  );
+  assert.deepEqual(
+    openMscz(pack(both)).parts.map((part) => part.role),
+    ["SA", "TB"],
+  );
+});
+
+test("a named voice stays the edited staff when the instrument id is still piano", () => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<museScore version="4.70">
+  <programVersion>4.7.7</programVersion>
+  <Score>
+    <Division>480</Division>
+    <Part id="1">
+      <Staff><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff>
+      <trackName>Vocals</trackName>
+      <Instrument id="grand-piano"><longName>Vocals</longName><instrumentId>keyboard.piano.grand</instrumentId></Instrument>
+    </Part>
+    <Part id="2">
+      <Staff><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff>
+      <trackName></trackName>
+      <Instrument id="grand-piano"><instrumentId>keyboard.piano.grand</instrumentId></Instrument>
+    </Part>
+    <Staff id="1"><Measure><voice><Chord><durationType>quarter</durationType><Note><pitch>72</pitch><tpc>14</tpc></Note></Chord></voice></Measure></Staff>
+    <Staff id="2"><Measure><voice><Chord><durationType>quarter</durationType><Lyrics><text>la</text></Lyrics><Note><pitch>48</pitch><tpc>14</tpc></Note></Chord></voice></Measure></Staff>
+  </Score>
+</museScore>
+`;
+  const score = openMscz(pack(xml));
+  assert.deepEqual(
+    score.parts.map((part) => part.role),
+    ["SA", "piano"],
+  );
+  assert.equal(score.parts[0].name, "Vocals");
+  assert.equal(pitchToMidi(score.parts[0].measures[0].notes.find((note) => note.pitch).pitch), 72);
+});
+
+test("a single unlabeled staff is edited even without lyrics", () => {
+  const score = openMscz(pack(pianoScore([{ midi: 60, tpc: 14 }])));
+  assert.deepEqual(
+    score.parts.map((part) => part.role),
+    ["SA"],
+  );
+  assert.equal(pitchToMidi(score.parts[0].measures[0].notes[0].pitch), 60);
+});
+
+test("several unlabeled staves ask for a choice, and the choice does not relabel the instrument", () => {
+  const xml = pianoScore(
+    [
+      { midi: 64, tpc: 18, clef: "G" },
+      { midi: 48, tpc: 14, clef: "F" },
+    ],
+    { trackName: "Piano" },
+  );
+  const packed = pack(xml);
+  const choice = openMscz(packed);
+  assert.equal(choice.needsStaffChoice, true);
+  assert.equal(choice.parts, undefined);
+  assert.deepEqual(
+    choice.choices.map((item) => item.label),
+    ["Staff 1, Piano, treble clef", "Staff 2, Piano, bass clef"],
+  );
+  const score = openMscz(packed, { vocalStaffIndex: choice.choices[1].index });
+  assert.deepEqual(
+    score.parts.map((part) => part.role),
+    ["SA", "piano"],
+  );
+  assert.equal(score.parts[0].measures[0].clef.sign, "F");
+  assert.equal(pitchToMidi(score.parts[0].measures[0].notes.find((note) => note.pitch).pitch), 48);
+  const untouched = readZip(exportMscz(score));
+  const original = readZip(packed);
+  for (let i = 0; i < original.length; i++) {
+    assert.deepEqual(untouched[i].compressed, original[i].compressed, original[i].name);
+  }
+  const note = score.parts[0].measures[0].notes.find((item) => item.pitch);
+  setPitch(score, note.id, diatonicMove(note.pitch, 0, 1));
+  const afterXml = new TextDecoder().decode(entryData(readZip(exportMscz(score)).find((entry) => /\.mscx$/i.test(entry.name))));
+  const after = openMscz(exportMscz(score), { vocalStaffIndex: 1 });
+  assert.equal(
+    cutRanges(afterXml, changedSpans(iterNotes(after).find((item) => item.id === note.id))),
+    cutRanges(xml, changedSpans(note)),
+  );
+  assert.match(afterXml, /<instrumentId>keyboard\.piano\.grand<\/instrumentId>/);
+  assert.match(afterXml, /<trackName>Piano<\/trackName>/);
+  assert.equal(afterXml.split("<pitch>64</pitch>").length, xml.split("<pitch>64</pitch>").length);
+});
+
+test("a file with no pitched notes says so", () => {
+  const empty = `<?xml version="1.0" encoding="UTF-8"?>\n<museScore version="4.20"><programVersion>4.2.0</programVersion><Score></Score></museScore>\n`;
+  assert.throws(() => openMscz(pack(empty)), new RegExp(NO_STAFF_ERROR.replace(/[.]/g, "\\.")));
+  assert.throws(() => openMscz(pack(pianoScore([{ rest: true }, { rest: true }]))), new RegExp(NO_STAFF_ERROR.replace(/[.]/g, "\\.")));
+  const onlyLower = openMscz(pack(pianoScore([{ rest: true, clef: "G" }, { midi: 50, tpc: 16, clef: "F" }])));
+  assert.equal(onlyLower.needsStaffChoice, undefined);
+  assert.equal(pitchToMidi(onlyLower.parts[0].measures[0].notes.find((note) => note.pitch).pitch), 50);
+  assert.equal(onlyLower.parts[0].measures[0].clef.sign, "F");
+});
+
+function conventionScore(instrumentId) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<museScore version="4.70">
+  <programVersion>4.7.7</programVersion>
+  <Score>
+    <Division>480</Division>
+    <Part id="1">
+      <Staff><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff>
+      <trackName></trackName>
+      <Instrument id="inst">
+        <longName></longName>
+        <shortName></shortName>
+        <instrumentId>${instrumentId}</instrumentId>
+      </Instrument>
+    </Part>
+    <Staff id="1">
+      <Measure>
+        <voice>
+          <Clef><concertClefType>G</concertClefType></Clef>
+          <KeySig><concertKey>0</concertKey></KeySig>
+          <TimeSig><sigN>4</sigN><sigD>4</sigD></TimeSig>
+          <Chord>
+            <durationType>whole</durationType>
+            <Lyrics><syllabic>single</syllabic><text>la</text></Lyrics>
+            <Note><pitch>60</pitch><tpc>14</tpc></Note>
+            <Note><pitch>64</pitch><tpc>18</tpc></Note>
+            <Note><pitch>67</pitch><tpc>15</tpc></Note>
+          </Chord>
+        </voice>
+        <voice><Rest><visible>0</visible><durationType>measure</durationType><duration>1/1</duration></Rest></voice>
+        <voice><Rest><visible>0</visible><durationType>measure</durationType><duration>1/1</duration></Rest></voice>
+      </Measure>
+      <Measure>
+        <voice><Chord><durationType>whole</durationType><Note><pitch>72</pitch><tpc>14</tpc></Note></Chord></voice>
+        <voice><Chord><durationType>whole</durationType><Note><pitch>76</pitch><tpc>18</tpc></Note></Chord></voice>
+        <voice><Chord><durationType>whole</durationType><Note><pitch>55</pitch><tpc>15</tpc></Note></Chord></voice>
+      </Measure>
+      <Measure>
+        <voice>
+          <Chord>
+            <durationType>whole</durationType>
+            <Note><pitch>60</pitch><tpc>14</tpc></Note>
+            <Note><pitch>64</pitch><tpc>18</tpc></Note>
+          </Chord>
+        </voice>
+        <voice><Chord><durationType>whole</durationType><Note><pitch>67</pitch><tpc>15</tpc></Note></Chord></voice>
+      </Measure>
+    </Staff>
+  </Score>
+</museScore>
+`;
+}
+
+test("one treble staff follows voice 1 Melody, voice 2 High, voice 3 Low", () => {
+  for (const instrumentId of ["keyboard.piano.grand", "voice.ensemble"]) {
+    const xml = conventionScore(instrumentId);
+    const packed = pack(xml);
+    const score = openMscz(packed);
+    assert.equal(score.needsStaffChoice, undefined, instrumentId);
+    assert.deepEqual(score.parts.map((part) => part.role), ["SA"], instrumentId);
+    assert.equal(score.parts[0].staffLabel, "Vocal", instrumentId);
+    assert.equal(score.parts[0].measures[0].clef.sign, "G", instrumentId);
+    const stacked = score.parts[0].measures[0].notes.filter((note) => note.pitch);
+    assert.deepEqual(stacked.map((note) => note.parts[0]), ["T", "A", "S"], instrumentId);
+    assert.equal(stacked.find((note) => note.parts[0] === "S").lyric.text, "la", instrumentId);
+    const split = score.parts[0].measures[1].notes.filter((note) => note.pitch);
+    assert.deepEqual(split.map((note) => note.parts[0]), ["S", "A", "T"], instrumentId);
+    assert.deepEqual(split.map((note) => `${note.pitch.step}${note.pitch.octave}`), ["C5", "E5", "G3"], instrumentId);
+    const merged = score.parts[0].measures[2].notes.filter((note) => note.pitch);
+    assert.deepEqual(merged.map((note) => note.parts[0]), ["S", "S", "A"], instrumentId);
+    const view = renderScore(score, { activePart: "A", selectedId: split[1].id, showChanges: false, playMeasure: 1 });
+    assert.match(view.gutter, />Vocal</, instrumentId);
+    assert.doesNotMatch(view.gutter, />SA</, instrumentId);
+    assert.doesNotMatch(view.gutter, />TB</, instrumentId);
+    const again = readZip(exportMscz(score));
+    const original = readZip(packed);
+    for (let i = 0; i < original.length; i++) assert.deepEqual(again[i].compressed, original[i].compressed, instrumentId);
+    const high = split[1];
+    setPitch(score, high.id, { step: "D", alter: 0, octave: 4 });
+    const afterXml = new TextDecoder().decode(entryData(readZip(exportMscz(score)).find((entry) => /\.mscx$/i.test(entry.name))));
+    const after = openMscz(exportMscz(score));
+    assert.equal(cutRanges(afterXml, changedSpans(iterNotes(after).find((note) => note.id === high.id))), cutRanges(xml, changedSpans(high)), instrumentId);
+    assert.match(afterXml, new RegExp(`<instrumentId>${instrumentId}</instrumentId>`));
+    assert.match(afterXml, /<longName><\/longName>/);
+    assert.match(afterXml, /<shortName><\/shortName>/);
+    assert.match(afterXml, /<trackName><\/trackName>/);
+    assert.doesNotMatch(afterXml, /Vocal/);
+    assert.deepEqual(iterNotes(after).find((note) => note.id === high.id).parts, ["A"], instrumentId);
+  }
+});
+
+test("a blank voice instrument opens with no lyrics and no part name", () => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<museScore version="4.70">
+  <programVersion>4.7.7</programVersion>
+  <Score>
+    <Division>480</Division>
+    <Part id="1">
+      <Staff><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff>
+      <trackName></trackName>
+      <Instrument id="voice"><longName></longName><shortName></shortName><instrumentId>voice.ensemble</instrumentId></Instrument>
+    </Part>
+    <Staff id="1">
+      <Measure>
+        <voice>
+          <Clef><concertClefType>G</concertClefType></Clef>
+          <Chord><durationType>quarter</durationType><Note><pitch>67</pitch><tpc>15</tpc></Note></Chord>
+        </voice>
+      </Measure>
+    </Staff>
+  </Score>
+</museScore>
+`;
+  const score = openMscz(pack(xml));
+  assert.deepEqual(score.parts.map((part) => part.role), ["SA"]);
+  assert.equal(score.parts[0].measures[0].notes[0].parts[0], "S");
+  const out = new TextDecoder().decode(entryData(readZip(exportMscz(score)).find((entry) => /\.mscx$/i.test(entry.name))));
+  assert.match(out, /<longName><\/longName>/);
+  assert.doesNotMatch(out, /Vocal/);
+});
+
+const VOICE_VOCALS_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<museScore version="4.70">
+  <programVersion>4.7.7</programVersion>
+  <Score>
+    <Division>480</Division>
+    <Part id="1">
+      <Staff><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff>
+      <trackName></trackName>
+      <Instrument id="voice">
+        <trackName></trackName>
+        <instrumentId>voice.vocals</instrumentId>
+      </Instrument>
+    </Part>
+    <Part id="2">
+      <Staff><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff>
+      <trackName>Piano</trackName>
+      <Instrument id="piano"><instrumentId>keyboard.piano.grand</instrumentId></Instrument>
+    </Part>
+    <Staff id="1">
+      <Measure>
+        <voice>
+          <Clef><concertClefType>G</concertClefType></Clef>
+          <KeySig><concertKey>0</concertKey></KeySig>
+          <TimeSig><sigN>4</sigN><sigD>4</sigD></TimeSig>
+          <Chord><durationType>quarter</durationType><Lyrics><text>la</text></Lyrics><Note><pitch>60</pitch><tpc>14</tpc></Note></Chord>
+          <Chord><durationType>quarter</durationType><Note><pitch>62</pitch><tpc>16</tpc></Note></Chord>
+          <Chord><durationType>half</durationType><Note><pitch>64</pitch><tpc>18</tpc></Note></Chord>
+        </voice>
+        <voice><Rest><visible>0</visible><durationType>measure</durationType><duration>1/1</duration></Rest></voice>
+        <voice><Rest><visible>0</visible><durationType>measure</durationType><duration>1/1</duration></Rest></voice>
+      </Measure>
+      <Measure>
+        <voice>
+          <Chord>
+            <durationType>quarter</durationType>
+            <Lyrics><text>la</text></Lyrics>
+            <Note><pitch>60</pitch><tpc>14</tpc></Note>
+            <Note><pitch>64</pitch><tpc>18</tpc></Note>
+            <Note><pitch>67</pitch><tpc>15</tpc></Note>
+          </Chord>
+        </voice>
+        <voice><Rest><visible>0</visible><durationType>measure</durationType><duration>1/1</duration></Rest></voice>
+        <voice><Rest><visible>0</visible><durationType>measure</durationType><duration>1/1</duration></Rest></voice>
+      </Measure>
+      <Measure>
+        <voice>
+          <Chord><durationType>quarter</durationType><Note><pitch>60</pitch><tpc>14</tpc></Note><Note><pitch>64</pitch><tpc>18</tpc></Note><Note><pitch>67</pitch><tpc>15</tpc></Note></Chord>
+          <Chord><durationType>quarter</durationType><Lyrics><text>lo</text></Lyrics><Note><pitch>59</pitch><tpc>19</tpc></Note><Note><pitch>64</pitch><tpc>18</tpc></Note></Chord>
+          <Chord><durationType>half</durationType><Note><pitch>60</pitch><tpc>14</tpc></Note><Note><pitch>64</pitch><tpc>18</tpc></Note><Note><pitch>67</pitch><tpc>15</tpc></Note></Chord>
+        </voice>
+      </Measure>
+      <Measure>
+        <voice><Chord><durationType>whole</durationType><Note><pitch>72</pitch><tpc>14</tpc></Note></Chord></voice>
+        <voice><Chord><durationType>whole</durationType><Note><pitch>76</pitch><tpc>18</tpc></Note></Chord></voice>
+        <voice><Chord><durationType>whole</durationType><Note><pitch>55</pitch><tpc>15</tpc></Note></Chord></voice>
+      </Measure>
+    </Staff>
+    <Staff id="2">
+      <Measure>
+        <voice>
+          <Clef><concertClefType>F</concertClefType></Clef>
+          <Chord><durationType>whole</durationType><Note><pitch>48</pitch><tpc>14</tpc></Note></Chord>
+        </voice>
+      </Measure>
+      <Measure><voice><Rest><durationType>measure</durationType><duration>1/1</duration></Rest></voice></Measure>
+      <Measure><voice><Rest><durationType>measure</durationType><duration>1/1</duration></Rest></voice></Measure>
+      <Measure><voice><Rest><durationType>measure</durationType><duration>1/1</duration></Rest></voice></Measure>
+    </Staff>
+  </Score>
+</museScore>
+`;
+
+test("voice.vocals is the vocal staff with no part name, and rest voices do not reassign notes", () => {
+  const bare = openMscz(pack(VOICE_VOCALS_XML.replace(/<Lyrics><text>[^<]*<\/text><\/Lyrics>/g, "")));
+  assert.equal(bare.needsStaffChoice, undefined);
+  assert.deepEqual(
+    bare.parts.map((part) => part.role),
+    ["SA", "piano"],
+  );
+  const packed = pack(VOICE_VOCALS_XML);
+  const score = openMscz(packed);
+  assert.equal(score.needsStaffChoice, undefined);
+  assert.deepEqual(
+    score.parts.map((part) => part.role),
+    ["SA", "piano"],
+  );
+  assert.equal(score.parts[0].staffLabel, "Vocal");
+  const melody = score.parts[0].measures[0].notes.filter((note) => note.pitch);
+  assert.deepEqual(melody.map((note) => note.parts[0]), ["S", "S", "S"]);
+  const underRests = score.parts[0].measures[1].notes.filter((note) => note.pitch);
+  assert.deepEqual(underRests.map((note) => note.parts[0]), ["T", "A", "S"]);
+  assert.equal(underRests.find((note) => note.parts[0] === "S").lyric.text, "la");
+  const mixed = score.parts[0].measures[2].notes.filter((note) => note.pitch);
+  assert.deepEqual(mixed.map((note) => note.parts[0]), ["T", "A", "S", "A", "S", "T", "A", "S"]);
+  assert.equal(mixed.find((note) => note.lyric).parts[0], "S");
+  const split = score.parts[0].measures[3].notes.filter((note) => note.pitch);
+  assert.deepEqual(split.map((note) => note.parts[0]), ["S", "A", "T"]);
+  assert.deepEqual(split.map((note) => note.pitch.step + note.pitch.octave), ["C5", "E5", "G3"]);
+  assert.ok(score.parts[1].measures[0].notes.filter((note) => note.pitch).every((note) => note.parts.length === 0));
+  const again = readZip(exportMscz(score));
+  const original = readZip(packed);
+  for (let i = 0; i < original.length; i++) assert.deepEqual(again[i].compressed, original[i].compressed);
+  const unisonTop = mixed.find((note) => note.lyric);
+  setPitch(score, unisonTop.id, { step: "F", alter: 0, octave: 4 });
+  const afterXml = new TextDecoder().decode(entryData(readZip(exportMscz(score)).find((entry) => /\.mscx$/i.test(entry.name))));
+  const after = openMscz(exportMscz(score));
+  const edited = iterNotes(score).filter(isEdited);
+  assert.equal(edited.length, 1);
+  assert.equal(
+    cutRanges(afterXml, changedSpans(iterNotes(after).find((note) => note.id === unisonTop.id))),
+    cutRanges(VOICE_VOCALS_XML, changedSpans(unisonTop)),
+  );
+  assert.match(afterXml, /<instrumentId>voice\.vocals<\/instrumentId>/);
+  assert.match(afterXml, /<instrumentId>keyboard\.piano\.grand<\/instrumentId>/);
+  assert.doesNotMatch(afterXml, /<longName>/);
+  assert.doesNotMatch(afterXml, /<shortName>/);
+  assert.match(afterXml, /<trackName><\/trackName>/);
+  assert.deepEqual(iterNotes(after).find((note) => note.id === unisonTop.id).parts, ["S"]);
+  assert.deepEqual(
+    iterNotes(after).filter((note) => note.measureIndex === 2 && note.pitch && note.startQl === 0).map((note) => note.parts[0]),
+    ["T", "A", "S"],
+  );
 });
 
 test("local MuseScore files round-trip when REAL_MSCZ is set", () => {
