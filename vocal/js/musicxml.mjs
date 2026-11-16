@@ -79,6 +79,55 @@ function assignParts(role, voice, hasVoice2) {
   return [];
 }
 
+const SINGLE_STAFF_PARTS = ["S", "A", "T", "B"];
+
+function voiceNumber(note) {
+  if (Number.isInteger(note.voiceIndex)) return note.voiceIndex + 1;
+  const n = Number(note.voice);
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
+function onsetKey(note) {
+  if (note.startFrac) return `${note.startFrac[0]}/${note.startFrac[1]}`;
+  return String(Math.round(note.startQl * 1000) / 1000);
+}
+
+// One vocal staff. A measure that uses another voice keeps each voice's part:
+// voice 1 is Melody, 2 is High, 3 is Low, 4 is Bass. A measure that stays in
+// voice 1 stacks parts by the note's place in the file, not by its current
+// pitch, so an edit that crosses a neighbor does not swap parts on reload.
+// topFirst is MusicXML chord order (first note is the top). MuseScore stores
+// a chord low to high, so the last note is the top.
+export function assignSingleStaffParts(measures, { topFirst = false } = {}) {
+  for (const measure of measures) {
+    const pitched = measure.notes.filter((note) => note.pitch && !note.grace);
+    const voices = new Set(pitched.map(voiceNumber));
+    const voiceParts = voices.size > 1 || (voices.size === 1 && [...voices][0] !== 1);
+    if (voiceParts) {
+      for (const note of measure.notes) {
+        note.parts = note.pitch && !note.grace ? [SINGLE_STAFF_PARTS[Math.min(voiceNumber(note) - 1, 3)]] : [];
+      }
+      continue;
+    }
+    const groups = new Map();
+    for (const note of measure.notes) {
+      if (!note.pitch || note.grace) {
+        note.parts = [];
+        continue;
+      }
+      const key = onsetKey(note);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(note);
+    }
+    for (const group of groups.values()) {
+      const ordered = group.slice().sort((a, b) => (topFirst ? a.chordNote - b.chordNote : b.chordNote - a.chordNote));
+      ordered.forEach((note, index) => {
+        note.parts = [SINGLE_STAFF_PARTS[Math.min(index, 3)]];
+      });
+    }
+  }
+}
+
 function accidentalMark(alterText) {
   const n = Number(alterText || 0);
   if (n === 1) return "#";
@@ -182,12 +231,13 @@ export function parseScore(xml) {
         const barlines = { left: null, right: null };
         let cursor = 0;
         let lastStart = 0;
+        let chordNote = 0;
         for (const el of mEl.children) {
           if (el.tag === "backup") {
             cursor -= Number(textOf(xml, child(el, "duration")) || 0) / divisions;
           } else if (el.tag === "forward") {
             cursor += Number(textOf(xml, child(el, "duration")) || 0) / divisions;
-          } else if (el.tag === "harmony" && role === "SA") {
+          } else if (el.tag === "harmony" && role !== "piano") {
             const offset = Number(textOf(xml, child(el, "offset")) || 0) / divisions;
             harmonies.push({ ql: cursor + offset, text: harmonyLabel(xml, el) });
           } else if (el.tag === "barline") {
@@ -204,6 +254,7 @@ export function parseScore(xml) {
           } else if (el.tag === "note") {
             const isChord = el.children.some((c) => c.tag === "chord");
             const isGrace = el.children.some((c) => c.tag === "grace");
+            chordNote = isChord ? chordNote + 1 : 0;
             const dur = Number(textOf(xml, child(el, "duration")) || 0) / divisions;
             const voice = textOf(xml, child(el, "voice")) || "1";
             const pitchEl = child(el, "pitch");
@@ -223,6 +274,7 @@ export function parseScore(xml) {
               isRest: !!restEl,
               measureRest: restEl?.attrs.measure === "yes",
               chord: isChord,
+              chordNote,
               grace: isGrace,
               startQl: start,
               durQl: dur,
@@ -265,6 +317,35 @@ export function parseScore(xml) {
         });
       });
     parts.push({ id: partEl.attrs.id, name, role, measures });
+  }
+
+  // SA plus TB keeps the two-staff voice pairs. One vocal part is the
+  // single-staff layout, including a part that is not named Soprano or Tenor.
+  const vocals = parts.filter((part) => part.role !== "piano");
+  const paired = parts.some((part) => part.role === "SA") && parts.some((part) => part.role === "TB");
+  if (!paired && vocals.length === 1) {
+    const vocal = vocals[0];
+    vocal.role = "SA";
+    vocal.staffLabel = "Vocal";
+    assignSingleStaffParts(vocal.measures, { topFirst: true });
+    for (const measure of vocal.measures) {
+      measure.notes.forEach((note, index) => {
+        note.id = `SA:${measure.index}:${index}`;
+        note.index = index;
+      });
+      const groups = new Map();
+      for (const note of measure.notes) {
+        if (!note.pitch || note.grace) continue;
+        const key = `${note.voice}:${onsetKey(note)}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(note);
+      }
+      for (const group of groups.values()) {
+        if (group.length < 2) continue;
+        const id = `SA:${measure.index}:${group[0].index}`;
+        for (const note of group) note.chordId = id;
+      }
+    }
   }
 
   return {

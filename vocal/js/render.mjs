@@ -215,7 +215,7 @@ function drawMusic(width, measures, notes, state, tops = [SA_TOP, TB_TOP], heigh
     drawBar(parts, measure.x + measure.w - 2, measure.barlines.right, tops);
   }
   drawTies(parts, notes);
-  drawBeams(parts, notes);
+  drawBeams(parts, notes, state);
   for (const note of notes) drawNote(parts, note, state);
   const cursorX = measures[state.playMeasure]?.x ?? 0;
   const cursorBottom = tops[tops.length - 1] + STAFF_H + 10;
@@ -346,11 +346,19 @@ function dots(x, tops = [SA_TOP, TB_TOP]) {
   return spots.map((y) => `<circle cx="${x}" cy="${y}" r="1.7" fill="#222"/>`).join("");
 }
 
+function partColor(note, state) {
+  const part = note.parts?.includes(state.activePart) ? state.activePart : note.parts?.[0];
+  return PART_COLORS[part] || "#111";
+}
+
 function drawNote(parts, note, state) {
   const selected = note.id === state.selectedId;
-  const color = selected ? PART_COLORS[state.activePart] || "#111" : "#111";
+  const color = note.isRest ? "#111" : partColor(note, state);
   if (state.showChanges && note.edited) {
     parts.push(`<circle cx="${note.x}" cy="${note.y}" r="12" fill="none" stroke="#e0a100" stroke-width="2.5"/>`);
+  }
+  if (selected && !note.isRest) {
+    parts.push(`<circle cx="${note.x}" cy="${note.y}" r="10" fill="none" stroke="#111" stroke-width="1.8"/>`);
   }
   if (note.isRest) {
     parts.push(restGlyph(note, color));
@@ -435,7 +443,7 @@ function restGlyph(note, color) {
   return `<path d="M ${x} ${top + 8} L ${x + 7} ${top + 16} L ${x - 3} ${top + 22} L ${x + 7} ${top + 30} L ${x - 2} ${top + 38}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
 }
 
-function drawBeams(parts, notes) {
+function drawBeams(parts, notes, state) {
   const byMeasure = new Map();
   for (const note of notes) {
     if (note.isRest) continue;
@@ -463,12 +471,12 @@ function drawBeams(parts, notes) {
     }
     for (const group of groups) {
       if (group.length < 2) continue;
-      paintBeam(parts, group);
+      paintBeam(parts, group, partColor(group[0], state));
     }
   }
 }
 
-function paintBeam(parts, group) {
+function paintBeam(parts, group, color) {
   const up = stemUp(group[0]);
   const dir = up ? -1 : 1;
   const len = LG * 3.45;
@@ -496,10 +504,10 @@ function paintBeam(parts, group) {
   };
   for (const note of group) {
     const x = xOf(note);
-    parts.push(`<line x1="${x}" y1="${note.y}" x2="${x}" y2="${yAt(x, 0)}" stroke="#111" stroke-width="1.3"/>`);
+    parts.push(`<line x1="${x}" y1="${note.y}" x2="${x}" y2="${yAt(x, 0)}" stroke="${color}" stroke-width="1.3"/>`);
   }
   parts.push(
-    `<line x1="${x0}" y1="${yAt(x0, 0)}" x2="${x1}" y2="${yAt(x1, 0)}" stroke="#111" stroke-width="${LG * 0.48}" stroke-linecap="butt"/>`,
+    `<line x1="${x0}" y1="${yAt(x0, 0)}" x2="${x1}" y2="${yAt(x1, 0)}" stroke="${color}" stroke-width="${LG * 0.48}" stroke-linecap="butt"/>`,
   );
   const maxLevel = Math.max(...group.flatMap((n) => n.beams.map((b) => b.number)));
   for (let level = 2; level <= maxLevel; level++) {
@@ -509,22 +517,22 @@ function paintBeam(parts, group) {
       const x = xOf(group[i]);
       if (beam.type === "forward hook" || (beam.type === "begin" && (i === group.length - 1 || !group[i + 1].beams.some((b) => b.number === level)))) {
         const x2 = x + Math.min(12, span * 0.45);
-        parts.push(partial(x, yAt(x, level - 1), x2, yAt(x2, level - 1)));
+        parts.push(partial(x, yAt(x, level - 1), x2, yAt(x2, level - 1), color));
       } else if (beam.type === "backward hook") {
         const x2 = x - Math.min(12, span * 0.45);
-        parts.push(partial(x2, yAt(x2, level - 1), x, yAt(x, level - 1)));
+        parts.push(partial(x2, yAt(x2, level - 1), x, yAt(x, level - 1), color));
       } else if (beam.type === "begin" || beam.type === "continue") {
         const next = group[i + 1];
         if (!next || !next.beams.some((b) => b.number === level && (b.type === "continue" || b.type === "end"))) continue;
         const x2 = xOf(next);
-        parts.push(partial(x, yAt(x, level - 1), x2, yAt(x2, level - 1)));
+        parts.push(partial(x, yAt(x, level - 1), x2, yAt(x2, level - 1), color));
       }
     }
   }
 }
 
-function partial(x1, y1, x2, y2) {
-  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#111" stroke-width="${LG * 0.42}" stroke-linecap="butt"/>`;
+function partial(x1, y1, x2, y2, color) {
+  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${LG * 0.42}" stroke-linecap="butt"/>`;
 }
 
 function drawTies(parts, notes) {

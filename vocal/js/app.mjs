@@ -59,13 +59,8 @@ function showError(message) {
 function acceptScore(score, filename) {
   const hasUpper = score.parts.some((p) => p.role === "SA");
   const hasLower = score.parts.some((p) => p.role === "TB");
-  if (score.format === "mscz") {
-    if (!hasUpper && !hasLower) {
-      showError("This file needs a vocal staff.");
-      return;
-    }
-  } else if (!hasUpper || !hasLower) {
-    showError("This file needs a Soprano/Alto staff and a Tenor/Bass staff.");
+  if (!hasUpper && !hasLower) {
+    showError("This file needs a vocal staff.");
     return;
   }
   showError("");

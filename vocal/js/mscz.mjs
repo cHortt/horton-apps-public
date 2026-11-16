@@ -4,7 +4,7 @@
 // alone. Export splices pitch, tpc, tpc2, and an explicit accidental on the
 // notes that actually changed, and copies every other zip entry through.
 
-import { child, isEdited, parseDocument, textOf } from "./musicxml.mjs";
+import { assignSingleStaffParts, child, isEdited, parseDocument, textOf } from "./musicxml.mjs";
 import { pitchToMidi } from "./theory.mjs";
 import { entryData, readZip, writeZip } from "./zip.mjs";
 
@@ -477,48 +477,8 @@ function assignVoices(measures, pair, unison) {
   }
 }
 
-// One staff, several parts in each chord. MuseScore stores the notes low to
-// high, so the top note is S, the next A, then T, then B. A second voice at
-// the same beat joins that ranking. Voice-only staves (no stacked chords)
-// keep voice order instead: voice 1 is S, voice 2 is A, voice 3 is T.
 function assignOneStaff(measures) {
-  let stacked = false;
-  let voices = 0;
-  for (const measure of measures) {
-    for (const note of measure.notes) {
-      if (note.pitch) voices = Math.max(voices, note.voiceIndex + 1);
-      if (note.pitch && note.chordSize > 1) stacked = true;
-    }
-  }
-  if (!stacked && voices > 1) {
-    assignVoices(measures, ["S", "A", "T", "B"], false);
-    return;
-  }
-  if (!stacked) {
-    for (const measure of measures) {
-      for (const note of measure.notes) note.parts = note.pitch ? ["S"] : [];
-    }
-    return;
-  }
-  const order = ["S", "A", "T", "B"];
-  for (const measure of measures) {
-    const groups = new Map();
-    for (const note of measure.notes) {
-      if (!note.pitch || note.grace) {
-        note.parts = [];
-        continue;
-      }
-      const key = `${note.startFrac[0]}/${note.startFrac[1]}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(note);
-    }
-    for (const group of groups.values()) {
-      const ranked = group.slice().sort((a, b) => b.midi - a.midi || a.chordNote - b.chordNote);
-      ranked.forEach((note, index) => {
-        note.parts = [order[Math.min(index, order.length - 1)]];
-      });
-    }
-  }
+  assignSingleStaffParts(measures, { topFirst: false });
 }
 
 function finishNotes(part) {

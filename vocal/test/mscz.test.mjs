@@ -5,7 +5,7 @@ import test from "node:test";
 import { zipSync } from "../js/fflate.mjs";
 import { chromaticMove, diatonicMove, pitchToMidi } from "../js/theory.mjs";
 import { exportMscz, openMscz, pitchFromMidiTpc, tpcFromPitch } from "../js/mscz.mjs";
-import { editedName, isEdited, iterNotes, parseScore, playbackEvents, setPitch } from "../js/musicxml.mjs";
+import { editedName, exportScore, isEdited, iterNotes, parseScore, playbackEvents, setPitch } from "../js/musicxml.mjs";
 import { renderScore } from "../js/render.mjs";
 import { crc32, entryData, readZip, writeZip } from "../js/zip.mjs";
 
@@ -396,6 +396,149 @@ test("a zip written by another library still opens", () => {
   const out = exportMscz(score);
   assert.equal(new TextDecoder().decode(entryData(readZip(out).find((entry) => entry.name === "score_style.mss"))).includes("pageWidth"), true);
 });
+
+const CROSS_MSCZ = `<?xml version="1.0" encoding="UTF-8"?>
+<museScore version="4.20">
+  <programVersion>4.2.1</programVersion>
+  <Score>
+    <Division>480</Division>
+    <Part id="1">
+      <Staff><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff>
+      <trackName>Vocals</trackName>
+      <Instrument id="voice"><longName>Vocals</longName><instrumentId>voice.ensemble</instrumentId></Instrument>
+    </Part>
+    <Staff id="1">
+      <Measure>
+        <voice>
+          <Clef><concertClefType>G</concertClefType><transposingClefType>G</transposingClefType></Clef>
+          <KeySig><concertKey>0</concertKey></KeySig>
+          <TimeSig><sigN>4</sigN><sigD>4</sigD></TimeSig>
+          <Chord><durationType>half</durationType><StemDirection>up</StemDirection><Note><pitch>60</pitch><tpc>14</tpc></Note></Chord>
+          <Chord><durationType>half</durationType><StemDirection>up</StemDirection><Note><pitch>64</pitch><tpc>18</tpc></Note></Chord>
+        </voice>
+        <voice>
+          <Chord><durationType>half</durationType><StemDirection>down</StemDirection><Note><pitch>76</pitch><tpc>18</tpc></Note></Chord>
+          <Chord><durationType>half</durationType><StemDirection>down</StemDirection><Note><pitch>60</pitch><tpc>14</tpc></Note></Chord>
+        </voice>
+      </Measure>
+      <Measure>
+        <voice>
+          <Chord>
+            <durationType>whole</durationType>
+            <Note><pitch>60</pitch><tpc>14</tpc></Note>
+            <Note><pitch>64</pitch><tpc>18</tpc></Note>
+            <Note><pitch>67</pitch><tpc>15</tpc></Note>
+          </Chord>
+        </voice>
+      </Measure>
+    </Staff>
+  </Score>
+</museScore>
+`;
+
+const CROSS_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list>
+    <score-part id="P1"><part-name>Vocals</part-name></score-part>
+    <score-part id="P2"><part-name>Piano</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>half</type><stem>up</stem></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>half</type><stem>up</stem></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><voice>2</voice><type>half</type><stem>down</stem></note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><voice>2</voice><type>half</type><stem>down</stem></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note>
+      <note><chord/><pitch><step>E</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note>
+      <note><chord/><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note>
+    </measure>
+  </part>
+  <part id="P2">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef><sign>F</sign><line>4</line></clef>
+      </attributes>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note>
+    </measure>
+    <measure number="2">
+      <note><rest/><duration>4</duration><voice>1</voice><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>
+`;
+
+function assertCrossing(score, label) {
+  assert.equal(score.parts[0].staffLabel, "Vocal", label);
+  const crossing = score.parts[0].measures[0];
+  const melody = crossing.notes.filter((note) => note.pitch && note.parts[0] === "S");
+  const high = crossing.notes.filter((note) => note.pitch && note.parts[0] === "A");
+  assert.deepEqual(melody.map((note) => note.pitch.step + note.pitch.octave), ["C4", "E4"], label);
+  assert.deepEqual(high.map((note) => note.pitch.step + note.pitch.octave), ["E5", "C4"], label);
+  assert.ok(pitchToMidi(high[0].pitch) > pitchToMidi(melody[0].pitch), label);
+  assert.ok(pitchToMidi(high[1].pitch) < pitchToMidi(melody[1].pitch), label);
+  const chord = score.parts[0].measures[1].notes.filter((note) => note.pitch);
+  assert.deepEqual(chord.map((note) => note.parts[0]), label === "musicxml" ? ["S", "A", "T"] : ["T", "A", "S"], label);
+  const channels = playbackEvents(score).filter((event) => event.ql === 0).map((event) => event.channel);
+  assert.ok(channels.includes("S") && channels.includes("A"), label);
+  if (score.parts.some((part) => part.role === "piano")) assert.ok(channels.includes("P"), label);
+  const view = renderScore(score, { activePart: "A", selectedId: high[0].id, showChanges: false, playMeasure: 0 });
+  assert.match(view.music, /#d61f2c/);
+  assert.match(view.music, /#e86a12/);
+  return { melody, high, chord };
+}
+
+test("a single staff keeps voice identity when High crosses above Melody", () => {
+  const mscz = openMscz(pack(CROSS_MSCZ));
+  const xmlScore = parseScore(CROSS_XML);
+  const fromMscz = assertCrossing(mscz, "mscz");
+  const fromXml = assertCrossing(xmlScore, "musicxml");
+  assert.equal(exportScore(xmlScore), CROSS_XML);
+
+  const crossed = fromMscz.high[0];
+  const below = { step: "B", alter: 0, octave: 3 };
+  setPitch(mscz, crossed.id, below);
+  assert.deepEqual(findPart(mscz, crossed.id), ["A"]);
+  const exported = exportMscz(mscz);
+  const reloaded = openMscz(exported);
+  assert.deepEqual(findPart(reloaded, crossed.id), ["A"]);
+  assert.deepEqual(findPitch(reloaded, crossed.id), below);
+  assert.deepEqual(findPart(reloaded, fromMscz.melody[0].id), ["S"]);
+  const bottom = fromMscz.chord.find((note) => note.parts[0] === "T");
+  setPitch(reloaded, bottom.id, { step: "A", alter: 0, octave: 5 });
+  const restacked = openMscz(exportMscz(reloaded));
+  assert.deepEqual(findPart(restacked, bottom.id), ["T"]);
+  assert.deepEqual(findPitch(restacked, bottom.id), { step: "A", alter: 0, octave: 5 });
+
+  const xmlHigh = fromXml.high[0];
+  setPitch(xmlScore, xmlHigh.id, below);
+  assert.deepEqual(findPart(xmlScore, xmlHigh.id), ["A"]);
+  const xmlOut = exportScore(xmlScore);
+  const xmlAgain = parseScore(xmlOut);
+  assert.deepEqual(findPart(xmlAgain, xmlHigh.id), ["A"]);
+  assert.deepEqual(findPitch(xmlAgain, xmlHigh.id), below);
+  setPitch(xmlScore, xmlHigh.id, xmlHigh.originalPitch);
+  assert.equal(exportScore(xmlScore), CROSS_XML);
+});
+
+function findPart(score, id) {
+  return iterNotes(score).find((note) => note.id === id).parts;
+}
+
+function findPitch(score, id) {
+  return iterNotes(score).find((note) => note.id === id).pitch;
+}
 
 test("MusicXML still draws both vocal staves", () => {
   const xml = readFileSync(new URL("../fixtures/satb-sample.musicxml", import.meta.url), "utf8");
