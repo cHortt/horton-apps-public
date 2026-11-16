@@ -1,4 +1,6 @@
 *.json
+# Private local MuseScore scores. The vocal tests build their own synthetic files.
+*.mscz
 *.csv
 *.pdf
 # The learning applet tracks its progress logs and lesson PDFs.

@@ -1,7 +1,9 @@
 import { createEngine, startTransport } from "./audio.mjs";
-import { editedName, exportScore, findNote, parseScore, playbackEvents, rejectOpenedFile, setPitch } from "./musicxml.mjs";
+import { exportMscz, openMscz } from "./mscz.mjs";
+import { MXL_ERROR, editedName, exportScore, findNote, parseScore, playbackEvents, rejectOpenedFile, setPitch } from "./musicxml.mjs";
 import { PART_COLORS, renderScore, xForQl } from "./render.mjs";
 import { chromaticMove, defaultMix, diatonicMove, samePitch, spellPretty } from "./theory.mjs";
+import { isZip, readZip } from "./zip.mjs";
 
 const PART_NAMES = { S: "Soprano", A: "Alto", T: "Tenor", B: "Bass", P: "Piano" };
 const CHANNELS = ["S", "A", "T", "B", "P"];
@@ -54,22 +56,11 @@ function showError(message) {
   els.error.textContent = message || "";
 }
 
-function loadXml(xml, filename) {
-  stopPlayback();
-  const rejected = rejectOpenedFile(filename, xml);
-  if (rejected) {
-    showError(rejected);
-    return;
-  }
-  let score;
-  try {
-    score = parseScore(xml);
-  } catch (error) {
-    showError(error.message || "Could not read that MusicXML file.");
-    return;
-  }
-  if (!score.parts.some((p) => p.role === "SA") || !score.parts.some((p) => p.role === "TB")) {
-    showError("This file needs a Soprano/Alto staff and a Tenor/Bass staff.");
+function acceptScore(score, filename) {
+  const hasUpper = score.parts.some((p) => p.role === "SA");
+  const hasLower = score.parts.some((p) => p.role === "TB");
+  if (!hasUpper && !hasLower) {
+    showError("This file needs a vocal staff.");
     return;
   }
   showError("");
@@ -88,6 +79,35 @@ function loadXml(xml, filename) {
   els.empty.hidden = true;
   els.export.disabled = false;
   render();
+}
+
+function loadXml(xml, filename) {
+  stopPlayback();
+  const rejected = rejectOpenedFile(filename, xml);
+  if (rejected) {
+    showError(rejected);
+    return;
+  }
+  let score;
+  try {
+    score = parseScore(xml);
+  } catch (error) {
+    showError(error.message || "Could not read that MusicXML file.");
+    return;
+  }
+  acceptScore(score, filename);
+}
+
+function loadMscz(bytes, filename) {
+  stopPlayback();
+  let score;
+  try {
+    score = openMscz(bytes);
+  } catch (error) {
+    showError(error.message || "Could not read that MuseScore file.");
+    return;
+  }
+  acceptScore(score, filename);
 }
 
 function render() {
@@ -285,8 +305,11 @@ function moveCursor(ql) {
 }
 
 function download() {
-  const xml = exportScore(state.score);
-  const blob = new Blob([xml], { type: "application/vnd.recordare.musicxml+xml" });
+  const mscz = state.score?.format === "mscz";
+  const payload = mscz ? exportMscz(state.score) : exportScore(state.score);
+  const blob = new Blob([payload], {
+    type: mscz ? "application/octet-stream" : "application/vnd.recordare.musicxml+xml",
+  });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -307,10 +330,29 @@ els.file.addEventListener("change", () => {
     return;
   }
   const reader = new FileReader();
-  reader.onload = () => loadXml(String(reader.result || ""), file.name);
+  reader.onload = () => {
+    const bytes = new Uint8Array(reader.result || new ArrayBuffer(0));
+    if (/\.mscz$/i.test(file.name) || (isZip(bytes) && !/\.mxl$/i.test(file.name) && zipHasMscx(bytes))) {
+      loadMscz(bytes, file.name);
+      return;
+    }
+    if (isZip(bytes)) {
+      showError(MXL_ERROR);
+      return;
+    }
+    loadXml(new TextDecoder("utf-8").decode(bytes), file.name);
+  };
   reader.onerror = () => showError("Could not read that file.");
-  reader.readAsText(file);
+  reader.readAsArrayBuffer(file);
 });
+
+function zipHasMscx(bytes) {
+  try {
+    return readZip(bytes).some((entry) => /\.mscx$/i.test(entry.name));
+  } catch {
+    return false;
+  }
+}
 els.example.addEventListener("click", async () => {
   try {
     const response = await fetch("fixtures/satb-sample.musicxml");

@@ -15,7 +15,7 @@ function parseAttrs(source) {
   return attrs;
 }
 
-function parseTree(xml) {
+export function parseDocument(xml) {
   const root = { tag: "#root", attrs: {}, children: [], start: 0, end: xml.length, openEnd: 0, innerEnd: xml.length };
   const stack = [root];
   const re = new RegExp(TAG_RE.source, "g");
@@ -42,15 +42,19 @@ function parseTree(xml) {
     stack[stack.length - 1].children.push(el);
     if (!selfClosing) stack.push(el);
   }
-  if (stack.length !== 1) throw new Error("Unclosed element in MusicXML");
-  return root.children.find((el) => el.tag === "score-partwise") || null;
+  if (stack.length !== 1) throw new Error("Unclosed element in the score.");
+  return root;
 }
 
-function child(el, tag) {
+function parseTree(xml) {
+  return parseDocument(xml).children.find((el) => el.tag === "score-partwise") || null;
+}
+
+export function child(el, tag) {
   return el?.children.find((c) => c.tag === tag) || null;
 }
 
-function textOf(xml, el) {
+export function textOf(xml, el) {
   if (!el || el.innerEnd == null) return "";
   return xml.slice(el.openEnd, el.innerEnd).replace(/\s+/g, " ").trim();
 }
@@ -73,6 +77,55 @@ function assignParts(role, voice, hasVoice2) {
     return voice === "2" ? ["B"] : ["T"];
   }
   return [];
+}
+
+const SINGLE_STAFF_PARTS = ["S", "A", "T", "B"];
+
+function voiceNumber(note) {
+  if (Number.isInteger(note.voiceIndex)) return note.voiceIndex + 1;
+  const n = Number(note.voice);
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
+function onsetKey(note) {
+  if (note.startFrac) return `${note.startFrac[0]}/${note.startFrac[1]}`;
+  return String(Math.round(note.startQl * 1000) / 1000);
+}
+
+// One vocal staff. A measure that uses another voice keeps each voice's part:
+// voice 1 is Melody, 2 is High, 3 is Low, 4 is Bass. A measure that stays in
+// voice 1 stacks parts by the note's place in the file, not by its current
+// pitch, so an edit that crosses a neighbor does not swap parts on reload.
+// topFirst is MusicXML chord order (first note is the top). MuseScore stores
+// a chord low to high, so the last note is the top.
+export function assignSingleStaffParts(measures, { topFirst = false } = {}) {
+  for (const measure of measures) {
+    const pitched = measure.notes.filter((note) => note.pitch && !note.grace);
+    const voices = new Set(pitched.map(voiceNumber));
+    const voiceParts = voices.size > 1 || (voices.size === 1 && [...voices][0] !== 1);
+    if (voiceParts) {
+      for (const note of measure.notes) {
+        note.parts = note.pitch && !note.grace ? [SINGLE_STAFF_PARTS[Math.min(voiceNumber(note) - 1, 3)]] : [];
+      }
+      continue;
+    }
+    const groups = new Map();
+    for (const note of measure.notes) {
+      if (!note.pitch || note.grace) {
+        note.parts = [];
+        continue;
+      }
+      const key = onsetKey(note);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(note);
+    }
+    for (const group of groups.values()) {
+      const ordered = group.slice().sort((a, b) => (topFirst ? a.chordNote - b.chordNote : b.chordNote - a.chordNote));
+      ordered.forEach((note, index) => {
+        note.parts = [SINGLE_STAFF_PARTS[Math.min(index, 3)]];
+      });
+    }
+  }
 }
 
 function accidentalMark(alterText) {
@@ -178,12 +231,13 @@ export function parseScore(xml) {
         const barlines = { left: null, right: null };
         let cursor = 0;
         let lastStart = 0;
+        let chordNote = 0;
         for (const el of mEl.children) {
           if (el.tag === "backup") {
             cursor -= Number(textOf(xml, child(el, "duration")) || 0) / divisions;
           } else if (el.tag === "forward") {
             cursor += Number(textOf(xml, child(el, "duration")) || 0) / divisions;
-          } else if (el.tag === "harmony" && role === "SA") {
+          } else if (el.tag === "harmony" && role !== "piano") {
             const offset = Number(textOf(xml, child(el, "offset")) || 0) / divisions;
             harmonies.push({ ql: cursor + offset, text: harmonyLabel(xml, el) });
           } else if (el.tag === "barline") {
@@ -200,6 +254,7 @@ export function parseScore(xml) {
           } else if (el.tag === "note") {
             const isChord = el.children.some((c) => c.tag === "chord");
             const isGrace = el.children.some((c) => c.tag === "grace");
+            chordNote = isChord ? chordNote + 1 : 0;
             const dur = Number(textOf(xml, child(el, "duration")) || 0) / divisions;
             const voice = textOf(xml, child(el, "voice")) || "1";
             const pitchEl = child(el, "pitch");
@@ -219,6 +274,7 @@ export function parseScore(xml) {
               isRest: !!restEl,
               measureRest: restEl?.attrs.measure === "yes",
               chord: isChord,
+              chordNote,
               grace: isGrace,
               startQl: start,
               durQl: dur,
@@ -263,6 +319,35 @@ export function parseScore(xml) {
     parts.push({ id: partEl.attrs.id, name, role, measures });
   }
 
+  // SA plus TB keeps the two-staff voice pairs. One vocal part is the
+  // single-staff layout, including a part that is not named Soprano or Tenor.
+  const vocals = parts.filter((part) => part.role !== "piano");
+  const paired = parts.some((part) => part.role === "SA") && parts.some((part) => part.role === "TB");
+  if (!paired && vocals.length === 1) {
+    const vocal = vocals[0];
+    vocal.role = "SA";
+    vocal.staffLabel = "Vocal";
+    assignSingleStaffParts(vocal.measures, { topFirst: true });
+    for (const measure of vocal.measures) {
+      measure.notes.forEach((note, index) => {
+        note.id = `SA:${measure.index}:${index}`;
+        note.index = index;
+      });
+      const groups = new Map();
+      for (const note of measure.notes) {
+        if (!note.pitch || note.grace) continue;
+        const key = `${note.voice}:${onsetKey(note)}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(note);
+      }
+      for (const group of groups.values()) {
+        if (group.length < 2) continue;
+        const id = `SA:${measure.index}:${group[0].index}`;
+        for (const note of group) note.chordId = id;
+      }
+    }
+  }
+
   return {
     xml,
     title,
@@ -284,7 +369,14 @@ export function findNote(score, id) {
 export function setPitch(score, id, pitch) {
   const found = findNote(score, id);
   if (!found?.note.pitch) throw new Error("That note has no pitch to edit.");
-  found.note.pitch = { step: pitch.step, alter: pitch.alter || 0, octave: pitch.octave };
+  const next = { step: pitch.step, alter: pitch.alter || 0, octave: pitch.octave };
+  // A tie is one sounding note. MuseScore rejects a tie whose ends disagree,
+  // so an .mscz edit moves every note in that tie together.
+  const targets =
+    score.tieTogether && found.note.tieGroup
+      ? iterNotes(score).filter((note) => note.tieGroup === found.note.tieGroup && note.pitch)
+      : [found.note];
+  for (const note of targets) note.pitch = { ...next };
   return found;
 }
 
@@ -406,6 +498,7 @@ export const MXL_ERROR =
 // before the score parser runs. .mxl is a zip package, which this editor does not read.
 export function rejectOpenedFile(filename, text) {
   const name = String(filename || "");
+  if (/\.mscz$/i.test(name)) return "";
   if (/\.mxl$/i.test(name)) return MXL_ERROR;
   if (text == null) return "";
   const body = String(text);
@@ -417,18 +510,24 @@ export function rejectOpenedFile(filename, text) {
 }
 
 export function editedName(filename) {
-  const match = String(filename || "score.musicxml").match(/^(.*)(\.musicxml|\.xml)$/i);
+  const name = String(filename || "score.musicxml");
+  const mscz = name.match(/^(.*)\.mscz$/i);
+  if (mscz) return `${mscz[1]} (edited).mscz`;
+  const match = name.match(/^(.*)(\.musicxml|\.xml)$/i);
   if (match) return `${match[1]} (edited)${match[2]}`;
-  return `${filename || "score"} (edited).musicxml`;
+  return `${name} (edited).musicxml`;
 }
 
 export function playbackEvents(score) {
   const events = [];
   for (const part of score.parts) {
     if (part.role === "piano") events.push(...eventsFor(part, "P"));
-    else if (part.role === "SA") {
+    else if (part.role === "SA" || part.role === "extra") {
+      // A one-staff MuseScore score keeps melody and both harmony parts here.
       events.push(...eventsFor(part, "S"));
       events.push(...eventsFor(part, "A"));
+      events.push(...eventsFor(part, "T"));
+      events.push(...eventsFor(part, "B"));
     } else if (part.role === "TB") {
       events.push(...eventsFor(part, "T"));
       events.push(...eventsFor(part, "B"));
