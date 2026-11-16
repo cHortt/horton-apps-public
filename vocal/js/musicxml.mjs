@@ -15,7 +15,7 @@ function parseAttrs(source) {
   return attrs;
 }
 
-function parseTree(xml) {
+export function parseDocument(xml) {
   const root = { tag: "#root", attrs: {}, children: [], start: 0, end: xml.length, openEnd: 0, innerEnd: xml.length };
   const stack = [root];
   const re = new RegExp(TAG_RE.source, "g");
@@ -42,15 +42,19 @@ function parseTree(xml) {
     stack[stack.length - 1].children.push(el);
     if (!selfClosing) stack.push(el);
   }
-  if (stack.length !== 1) throw new Error("Unclosed element in MusicXML");
-  return root.children.find((el) => el.tag === "score-partwise") || null;
+  if (stack.length !== 1) throw new Error("Unclosed element in the score.");
+  return root;
 }
 
-function child(el, tag) {
+function parseTree(xml) {
+  return parseDocument(xml).children.find((el) => el.tag === "score-partwise") || null;
+}
+
+export function child(el, tag) {
   return el?.children.find((c) => c.tag === tag) || null;
 }
 
-function textOf(xml, el) {
+export function textOf(xml, el) {
   if (!el || el.innerEnd == null) return "";
   return xml.slice(el.openEnd, el.innerEnd).replace(/\s+/g, " ").trim();
 }
@@ -284,7 +288,14 @@ export function findNote(score, id) {
 export function setPitch(score, id, pitch) {
   const found = findNote(score, id);
   if (!found?.note.pitch) throw new Error("That note has no pitch to edit.");
-  found.note.pitch = { step: pitch.step, alter: pitch.alter || 0, octave: pitch.octave };
+  const next = { step: pitch.step, alter: pitch.alter || 0, octave: pitch.octave };
+  // A tie is one sounding note. MuseScore rejects a tie whose ends disagree,
+  // so an .mscz edit moves every note in that tie together.
+  const targets =
+    score.tieTogether && found.note.tieGroup
+      ? iterNotes(score).filter((note) => note.tieGroup === found.note.tieGroup && note.pitch)
+      : [found.note];
+  for (const note of targets) note.pitch = { ...next };
   return found;
 }
 
@@ -406,6 +417,7 @@ export const MXL_ERROR =
 // before the score parser runs. .mxl is a zip package, which this editor does not read.
 export function rejectOpenedFile(filename, text) {
   const name = String(filename || "");
+  if (/\.mscz$/i.test(name)) return "";
   if (/\.mxl$/i.test(name)) return MXL_ERROR;
   if (text == null) return "";
   const body = String(text);
@@ -417,18 +429,24 @@ export function rejectOpenedFile(filename, text) {
 }
 
 export function editedName(filename) {
-  const match = String(filename || "score.musicxml").match(/^(.*)(\.musicxml|\.xml)$/i);
+  const name = String(filename || "score.musicxml");
+  const mscz = name.match(/^(.*)\.mscz$/i);
+  if (mscz) return `${mscz[1]} (edited).mscz`;
+  const match = name.match(/^(.*)(\.musicxml|\.xml)$/i);
   if (match) return `${match[1]} (edited)${match[2]}`;
-  return `${filename || "score"} (edited).musicxml`;
+  return `${name} (edited).musicxml`;
 }
 
 export function playbackEvents(score) {
   const events = [];
   for (const part of score.parts) {
     if (part.role === "piano") events.push(...eventsFor(part, "P"));
-    else if (part.role === "SA") {
+    else if (part.role === "SA" || part.role === "extra") {
+      // A one-staff MuseScore score keeps melody and both harmony parts here.
       events.push(...eventsFor(part, "S"));
       events.push(...eventsFor(part, "A"));
+      events.push(...eventsFor(part, "T"));
+      events.push(...eventsFor(part, "B"));
     } else if (part.role === "TB") {
       events.push(...eventsFor(part, "T"));
       events.push(...eventsFor(part, "B"));

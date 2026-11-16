@@ -54,8 +54,9 @@ function gutterWidth(fifths) {
 
 export function renderScore(score, state) {
   const sa = score.parts.find((p) => p.role === "SA");
-  const tb = score.parts.find((p) => p.role === "TB");
-  const count = Math.min(sa.measures.length, tb.measures.length);
+  const tb = score.parts.find((p) => p.role === "TB") || null;
+  if (!sa) throw new Error("This file needs a vocal staff.");
+  const count = tb ? Math.min(sa.measures.length, tb.measures.length) : sa.measures.length;
   const fifths = sa.measures[0]?.fifths ?? 0;
   const gutter = gutterWidth(fifths);
   const measures = [];
@@ -63,31 +64,35 @@ export function renderScore(score, state) {
   let x = 8;
   let origin = 0;
   for (let i = 0; i < count; i++) {
-    const measure = layoutMeasure(sa.measures[i], tb.measures[i], x, origin);
+    const measure = layoutMeasure(sa.measures[i], tb ? tb.measures[i] : null, x, origin);
     measures.push(measure);
     placed.push(...measure.notes);
     x += measure.w;
     origin = measure.endQl;
   }
   const width = Math.max(x + 12, 320);
-  const music = drawMusic(width, measures, placed, state);
-  const gutterSvg = drawGutter(gutter, sa.measures[0], tb.measures[0]);
-  return { gutter: gutterSvg, music, width, height: HEIGHT, gutterWidth: gutter, measures, notes: placed, endQl: origin };
+  const height = tb ? HEIGHT : SA_TOP + STAFF_H + 36;
+  const tops = tb ? [SA_TOP, TB_TOP] : [SA_TOP];
+  const music = drawMusic(width, measures, placed, state, tops, height);
+  const gutterSvg = tb
+    ? drawGutter(gutter, sa.measures[0], tb.measures[0])
+    : drawSingleGutter(gutter, sa.measures[0], height, sa.staffLabel || "Vocal");
+  return { gutter: gutterSvg, music, width, height, gutterWidth: gutter, measures, notes: placed, endQl: origin };
 }
 
 function layoutMeasure(sa, tb, x, originQl) {
   const beats = sa.beats * (4 / sa.beatType);
   const onsets = new Set([0, roundQl(beats)]);
-  for (const note of [...sa.notes, ...tb.notes]) onsets.add(roundQl(note.startQl));
+  for (const note of [...sa.notes, ...(tb ? tb.notes : [])]) onsets.add(roundQl(note.startQl));
   for (const harmony of sa.harmonies) onsets.add(roundQl(harmony.ql));
   const points = [...onsets].sort((a, b) => a - b);
-  const left = sa.barlines.left || tb.barlines.left ? 16 : 8;
+  const left = sa.barlines.left || tb?.barlines.left ? 16 : 8;
   let cursor = left;
   const at = new Map();
   for (let i = 0; i < points.length - 1; i++) {
     at.set(points[i], cursor);
     let width = slotWidth(points[i + 1] - points[i]);
-    for (const note of [...sa.notes, ...tb.notes]) {
+    for (const note of [...sa.notes, ...(tb ? tb.notes : [])]) {
       if (!note.lyric || roundQl(note.startQl) !== points[i]) continue;
       width = Math.max(width, Math.min(84, note.lyric.text.length * 7.4 + 10));
     }
@@ -137,13 +142,15 @@ function layoutMeasure(sa, tb, x, originQl) {
       lyric: note.lyric,
       tieStart: note.tieStart,
       tieStop: note.tieStop,
+      chordId: note.chordId || "",
       staffTop,
       edited: isEdited(note),
       absQl: originQl + note.startQl,
     });
   };
   for (const note of sa.notes) add(note, SA_TOP, sa.clef.sign);
-  for (const note of tb.notes) add(note, TB_TOP, tb.clef.sign);
+  if (tb) for (const note of tb.notes) add(note, TB_TOP, tb.clef.sign);
+  groupChordStems(notes);
   return {
     x,
     w,
@@ -154,21 +161,44 @@ function layoutMeasure(sa, tb, x, originQl) {
     beats,
     xAt,
     harmonies: sa.harmonies.map((h) => ({ ...h, x: xAt(h.ql) + 9 })),
-    barlines: { left: sa.barlines.left || tb.barlines.left, right: sa.barlines.right || tb.barlines.right || "regular" },
+    barlines: { left: sa.barlines.left || tb?.barlines.left || null, right: sa.barlines.right || tb?.barlines.right || "regular" },
     fifths: sa.fifths,
     notes,
   };
 }
 
-function drawMusic(width, measures, notes, state) {
-  const parts = [];
-  parts.push(`<rect width="${width}" height="${HEIGHT}" fill="#fff"/>`);
-  for (const measure of measures) {
-    if (measure.index === state.playMeasure) {
-      parts.push(`<rect x="${measure.x}" y="18" width="${measure.w}" height="${HEIGHT - 28}" fill="#e8f0fe"/>`);
+function groupChordStems(notes) {
+  const groups = new Map();
+  for (const note of notes) {
+    if (!note.chordId || note.isRest) continue;
+    if (!groups.has(note.chordId)) groups.set(note.chordId, []);
+    groups.get(note.chordId).push(note);
+  }
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const up = stemUp(group[0]);
+    const host = group.reduce((best, note) => {
+      if (best.step == null) return note;
+      if (note.step == null) return best;
+      return (up ? note.step > best.step : note.step < best.step) ? note : best;
+    });
+    for (const note of group) {
+      if (note === host) continue;
+      note.stemless = true;
+      note.beams = [];
     }
   }
-  for (const top of [SA_TOP, TB_TOP]) {
+}
+
+function drawMusic(width, measures, notes, state, tops = [SA_TOP, TB_TOP], height = HEIGHT) {
+  const parts = [];
+  parts.push(`<rect width="${width}" height="${height}" fill="#fff"/>`);
+  for (const measure of measures) {
+    if (measure.index === state.playMeasure) {
+      parts.push(`<rect x="${measure.x}" y="18" width="${measure.w}" height="${height - 28}" fill="#e8f0fe"/>`);
+    }
+  }
+  for (const top of tops) {
     for (let i = 0; i < 5; i++) {
       const y = top + i * LG;
       parts.push(`<line x1="0" y1="${y}" x2="${width}" y2="${y}" stroke="#222" stroke-width="1"/>`);
@@ -181,17 +211,18 @@ function drawMusic(width, measures, notes, state) {
         `<text x="${harmony.x}" y="30" text-anchor="middle" font-size="15" font-weight="700" fill="#1f2933" font-family="sans-serif">${esc(harmony.text)}</text>`,
       );
     }
-    drawBar(parts, measure.x + 1, measure.barlines.left);
-    drawBar(parts, measure.x + measure.w - 2, measure.barlines.right);
+    drawBar(parts, measure.x + 1, measure.barlines.left, tops);
+    drawBar(parts, measure.x + measure.w - 2, measure.barlines.right, tops);
   }
   drawTies(parts, notes);
   drawBeams(parts, notes);
   for (const note of notes) drawNote(parts, note, state);
   const cursorX = measures[state.playMeasure]?.x ?? 0;
+  const cursorBottom = tops[tops.length - 1] + STAFF_H + 10;
   parts.push(
-    `<line id="cursor" x1="${cursorX}" y1="${SA_TOP - 10}" x2="${cursorX}" y2="${TB_TOP + STAFF_H + 10}" stroke="#d61f2c" stroke-width="2" visibility="hidden"/>`,
+    `<line id="cursor" x1="${cursorX}" y1="${tops[0] - 10}" x2="${cursorX}" y2="${cursorBottom}" stroke="#d61f2c" stroke-width="2" visibility="hidden"/>`,
   );
-  return `<svg id="music" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}" viewBox="0 0 ${width} ${HEIGHT}">${parts.join("")}</svg>`;
+  return `<svg id="music" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${parts.join("")}</svg>`;
 }
 
 function drawGutter(width, sa, tb) {
@@ -227,6 +258,26 @@ function drawGutter(width, sa, tb) {
   );
   parts.push(`<line x1="${width - 1}" y1="0" x2="${width - 1}" y2="${HEIGHT}" stroke="#e4e7eb"/>`);
   return `<svg id="gutter" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}" viewBox="0 0 ${width} ${HEIGHT}">${parts.join("")}</svg>`;
+}
+
+function drawSingleGutter(width, staff, height, label) {
+  const clef = staff?.clef?.sign === "F" ? "F" : "G";
+  const parts = [`<rect width="${width}" height="${height}" fill="#fff"/>`];
+  for (let i = 0; i < 5; i++) {
+    const y = SA_TOP + i * LG;
+    parts.push(`<line x1="0" y1="${y}" x2="${width}" y2="${y}" stroke="#222" stroke-width="1"/>`);
+  }
+  parts.push(`<text x="16" y="${SA_TOP - 8}" font-size="11" font-weight="700" fill="#667085" font-family="sans-serif">${esc(label)}</text>`);
+  const clefX = 30;
+  if (clef === "F") parts.push(bassClef(clefX + 6, yOn(SA_TOP, 6)));
+  else parts.push(trebleClef(clefX, yOn(SA_TOP, 2)));
+  drawKey(parts, clefX + 34, SA_TOP, clef, staff?.fifths ?? 0);
+  const beats = staff?.beats ?? 4;
+  const beatType = staff?.beatType ?? 4;
+  parts.push(`<text x="${width - 16}" y="${SA_TOP + LG * 1.55}" text-anchor="middle" font-size="16" font-weight="700" font-family="serif">${beats}</text>`);
+  parts.push(`<text x="${width - 16}" y="${SA_TOP + LG * 3.35}" text-anchor="middle" font-size="16" font-weight="700" font-family="serif">${beatType}</text>`);
+  parts.push(`<line x1="${width - 1}" y1="0" x2="${width - 1}" y2="${height}" stroke="#e4e7eb"/>`);
+  return `<svg id="gutter" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${parts.join("")}</svg>`;
 }
 
 function brace(y1, y2) {
@@ -267,10 +318,10 @@ function flatGlyph(x, y) {
   return `<path d="M ${x} ${y - 14} L ${x} ${y + 5} M ${x} ${y - 1} C ${x + 7} ${y - 4}, ${x + 7} ${y + 7}, ${x} ${y + 4}" fill="none" stroke="#111" stroke-width="1.5" stroke-linejoin="round"/>`;
 }
 
-function drawBar(parts, x, kind) {
+function drawBar(parts, x, kind, tops = [SA_TOP, TB_TOP]) {
   if (!kind) return;
-  const y1 = SA_TOP;
-  const y2 = TB_TOP + STAFF_H;
+  const y1 = tops[0];
+  const y2 = tops[tops.length - 1] + STAFF_H;
   const line = (xx, width) => `<line x1="${xx}" y1="${y1}" x2="${xx}" y2="${y2}" stroke="#222" stroke-width="${width}"/>`;
   if (kind === "regular") parts.push(line(x, 1));
   else if (kind === "double") {
@@ -280,18 +331,18 @@ function drawBar(parts, x, kind) {
     parts.push(line(x - 6, 1));
     parts.push(line(x, 3.5));
   } else if (kind === "repeat-backward") {
-    parts.push(dots(x - 10));
+    parts.push(dots(x - 10, tops));
     parts.push(line(x - 4, 1));
     parts.push(line(x, 3.5));
   } else if (kind === "repeat-forward" || kind === "heavy-light") {
     parts.push(line(x, 3.5));
     parts.push(line(x + 4, 1));
-    parts.push(dots(x + 12));
+    parts.push(dots(x + 12, tops));
   }
 }
 
-function dots(x) {
-  const spots = [SA_TOP + LG * 1.5, SA_TOP + LG * 2.5, TB_TOP + LG * 1.5, TB_TOP + LG * 2.5];
+function dots(x, tops = [SA_TOP, TB_TOP]) {
+  const spots = tops.flatMap((top) => [top + LG * 1.5, top + LG * 2.5]);
   return spots.map((y) => `<circle cx="${x}" cy="${y}" r="1.7" fill="#222"/>`).join("");
 }
 
@@ -317,7 +368,7 @@ function drawNote(parts, note, state) {
   }
   const up = stemUp(note);
   const beamed = note.beams.some((b) => b.number === 1);
-  if (note.type !== "whole") {
+  if (note.type !== "whole" && !note.stemless) {
     const x = note.x + (up ? 5.4 : -5.4);
     const y2 = note.y + (up ? -1 : 1) * (beamed ? LG * 3.5 : note.type === "half" ? LG * 3.1 : LG * 3.5);
     if (!beamed) parts.push(`<line x1="${x}" y1="${note.y}" x2="${x}" y2="${y2}" stroke="${color}" stroke-width="1.3"/>`);

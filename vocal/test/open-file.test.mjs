@@ -11,6 +11,8 @@ test("compressed .mxl is rejected, including a zip renamed to .musicxml", () => 
   assert.equal(rejectOpenedFile("Song.mxl"), MXL_ERROR);
   assert.equal(rejectOpenedFile("Song.MXL", "<score-partwise>"), MXL_ERROR);
   assert.equal(rejectOpenedFile("Song.musicxml", "PK\u0003\u0004\u0014\u0000"), MXL_ERROR);
+  assert.equal(rejectOpenedFile("Song.mscz"), "");
+  assert.equal(rejectOpenedFile("Song.MSCZ", "PK\u0003\u0004\u0014\u0000"), "");
   assert.match(MXL_ERROR, /uncompressed MusicXML/);
 });
 
