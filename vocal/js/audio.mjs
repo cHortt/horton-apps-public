@@ -1,6 +1,7 @@
-// Sampled flute, oboe, tenor sax, and piano. Each instrument is fetched
-// the first time a mix needs it. Mix gains live on channel buses.
-import { CHANNEL_INSTRUMENT, INSTRUMENTS, LEVEL, selectVoice } from "./samples.mjs";
+// Voices use the plucky synth. Piano is a sampled instrument, fetched the
+// first time a mix needs it. Mix gains live on the channel buses.
+import { PIANO, PIANO_GAIN, pianoVoice } from "./samples.mjs";
+import { createHammer, playVoice } from "./voice.mjs";
 
 const CHANNELS = ["S", "A", "T", "B", "P"];
 
@@ -32,10 +33,11 @@ export function createEngine(context) {
     buses[channel] = gain;
   }
 
-  const ready = new Map();
-  const loading = new Map();
   const live = new Set();
   let outputReady = offline;
+  let hammer = null;
+  let piano = null;
+  let pianoJob = null;
 
   function attachOutput() {
     if (outputReady) return;
@@ -67,83 +69,69 @@ export function createEngine(context) {
     limiter.connect(ctx.destination);
   }
 
-  function play(channel, midi, when, dur) {
-    const id = CHANNEL_INSTRUMENT[channel];
-    const inst = ready.get(id);
-    if (!inst) return;
-    const voice = selectVoice(inst, midi);
-    const sample = voice.note;
+  function playPiano(midi, when, dur) {
+    if (!piano) return;
+    const voice = pianoVoice(midi);
+    const sample = piano.notes.find((note) => note.midi === voice.note.midi);
     if (!sample?.buffer) return;
     const src = ctx.createBufferSource();
     src.buffer = sample.buffer;
     src.playbackRate.setValueAtTime(voice.rate, when);
-    if (!inst.oneShot && sample.loopStart != null && sample.loopEnd != null) {
-      const endFrame = Math.min(sample.loopEnd, sample.buffer.length - 1);
-      const startFrame = Math.min(sample.loopStart, endFrame - 1);
-      src.loop = true;
-      src.loopStart = startFrame / sample.buffer.sampleRate;
-      src.loopEnd = endFrame / sample.buffer.sampleRate;
-    }
     const env = ctx.createGain();
-    const peak = Math.max(0.0001, LEVEL[id] || 1);
-    const attack = inst.oneShot ? 0.004 : 0.018;
-    const release = inst.oneShot ? 0.08 : 0.14;
+    const peak = Math.max(0.0001, PIANO_GAIN);
     env.gain.setValueAtTime(0.0001, when);
-    env.gain.exponentialRampToValueAtTime(peak, when + attack);
-    const releaseAt = when + Math.max(attack + 0.02, dur);
+    env.gain.exponentialRampToValueAtTime(peak, when + 0.004);
+    const releaseAt = when + Math.max(0.06, dur);
     env.gain.setValueAtTime(peak, releaseAt);
-    env.gain.exponentialRampToValueAtTime(0.0001, releaseAt + release);
+    env.gain.exponentialRampToValueAtTime(0.0001, releaseAt + 0.08);
     src.connect(env);
-    env.connect(buses[channel] || master);
+    env.connect(buses.P);
     src.start(when);
-    src.stop(releaseAt + release + 0.03);
+    src.stop(releaseAt + 0.11);
     live.add(src);
     src.onended = () => live.delete(src);
   }
 
-  async function loadInstrument(id) {
-    if (ready.has(id)) return ready.get(id);
-    if (loading.has(id)) return loading.get(id);
-    const spec = INSTRUMENTS[id];
-    const job = (async () => {
+  function play(channel, midi, when, dur) {
+    if (channel === "P") {
+      playPiano(midi, when, dur);
+      return;
+    }
+    if (!hammer) hammer = createHammer(ctx);
+    playVoice(ctx, { midi, when, dur, destination: buses[channel], live, hammer });
+  }
+
+  function loadPiano() {
+    if (piano) return Promise.resolve(piano);
+    if (pianoJob) return pianoJob;
+    pianoJob = (async () => {
       const notes = [];
-      for (const note of spec.notes) {
+      for (const note of PIANO.notes) {
         const response = await fetch(note.url);
-        if (!response.ok) throw new Error(`Could not load the ${spec.label} sound.`);
+        if (!response.ok) throw new Error("Could not load the piano sound.");
         const audio = await response.arrayBuffer();
         const buffer = await ctx.decodeAudioData(audio.slice(0));
         notes.push({ ...note, buffer });
       }
-      notes.sort((a, b) => a.midi - b.midi);
-      const inst = { ...spec, notes };
-      ready.set(id, inst);
-      loading.delete(id);
-      return inst;
+      piano = { notes };
+      pianoJob = null;
+      return piano;
     })();
-    loading.set(id, job);
-    try {
-      return await job;
-    } catch (error) {
-      loading.delete(id);
-      throw error;
-    }
-  }
-
-  function idsFor(mix) {
-    const ids = new Set();
-    for (const channel of CHANNELS) {
-      if (mix.mutes[channel] || !(mix.gains[channel] > 0)) continue;
-      ids.add(CHANNEL_INSTRUMENT[channel]);
-    }
-    return [...ids];
+    return pianoJob.then(
+      (loaded) => loaded,
+      (error) => {
+        pianoJob = null;
+        throw error;
+      },
+    );
   }
 
   return {
     ctx,
     play,
-    loadInstrument,
     async loadMix(mix) {
-      await Promise.all(idsFor(mix).map((id) => loadInstrument(id)));
+      if (mix.mutes.P || !(mix.gains.P > 0)) return;
+      await loadPiano();
     },
     async resume() {
       attachOutput();

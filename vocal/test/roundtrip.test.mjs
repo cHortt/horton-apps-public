@@ -110,7 +110,7 @@ test("scale steps, chromatic spelling, and rehearsal mix", () => {
   assert.equal(low.gains.P, high.gains.P);
   assert.equal(low.mutes.A, true);
   assert.equal(high.mutes.T, true);
-  assert.ok(Math.abs(low.gains.T - dbToGain(3)) < 1e-12);
+  assert.equal(low.gains.T, 1);
   assert.equal(editedName("Song - A - Piano Vocal.musicxml"), "Song - A - Piano Vocal (edited).musicxml");
 });
 

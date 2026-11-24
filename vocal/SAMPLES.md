@@ -1,35 +1,10 @@
 # Playback samples
 
-The vocal editor plays sampled instruments instead of a single synthesizer tone. A mix downloads an instrument the first time it needs it, then the service worker keeps that file on the device. Nothing from a score is uploaded.
+Melody, High, and Low use the built-in plucky tone. The piano is a sampled instrument. A mix downloads it the first time piano is needed, then the service worker keeps it on the device. Nothing from a score is uploaded.
 
 | Instrument | Part | Files | About |
 |---|---|---|---|
-| Flute | Melody | 4 notes, 185 KB | Recorded from C4 up. F3–B3 play the C4 recording at the written pitch, so the melody never jumps an octave. |
-| Oboe | High | 4 notes, 186 KB | |
-| Tenor sax | Low | 5 notes, 233 KB | Reaches G3. |
-| Piano | Piano | 23 notes, 560 KB | |
-
-The four instruments together are 1.14 MB. All Parts asks for every instrument. Melody, High, and Low skip the instruments they mute.
-
-## Flute and oboe
-
-VS Chamber Orchestra: Community Edition (VSCO 2 CE), recorded by Sam Gossner and Simon Dalzell. Samples cut by Elan Hickler / Soundemote.
-
-- Source: https://github.com/sgossner/VSCO-2-CE
-- Flute: `Woodwinds/Flute/susNV`, softer layer
-- Oboe: `Woodwinds/Oboe/Vib`, softer layer
-- License: [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)
-
-These notes were trimmed, given a short sustain loop, level-matched, and saved as mono 16-bit WAV at 44.1 kHz. Melody notes from F3 to B3 use the C4 flute slowed to the written pitch. The tone stays a flute, a little darker, in the same way a low flute is darker than a middle C. It does not become the oboe or the tenor sax.
-
-## Tenor saxophone
-
-Versilian Community Sample Library, non-vibrato tenor saxophone played by Brett.
-
-- Source: https://github.com/sgossner/VCSL
-- License: [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)
-
-Same trim, loop, and WAV conversion as the flute and oboe.
+| Piano | Piano | 23 notes, 560 KB | Block chords play when no Piano Vocal file is open. |
 
 ## Piano
 
@@ -40,4 +15,4 @@ Salamander Grand Piano by Alexander Holm (a Yamaha C5). This uses velocity layer
 
 Changes from the original recordings: leading silence trimmed, converted to mono, cut to about 3 seconds with a short fade, and encoded as 64 kbps MP3. No endorsement by Alexander Holm is implied.
 
-WAV and MP3 are used because both play in Safari on iPhone and iPad, including over a cellular connection. The install cache does not prefetch these files.
+MP3 is used because it plays in Safari on iPhone and iPad, including over a cellular connection. The install cache does not prefetch these files.

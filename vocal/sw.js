@@ -2,7 +2,7 @@
 // without touching another applet. Every applet on this Pages site shares
 // one origin (chortt.github.io).
 const CACHE_PREFIX = "vocal-";
-const CACHE = `${CACHE_PREFIX}pitch-v8`;
+const CACHE = `${CACHE_PREFIX}pitch-v9`;
 const ASSETS = [
   "./",
   "./index.html",
@@ -19,6 +19,7 @@ const ASSETS = [
   "./js/render.mjs",
   "./js/samples.mjs",
   "./js/theory.mjs",
+  "./js/voice.mjs",
   "./js/zip.mjs",
   "./fixtures/satb-sample.musicxml",
 ];
@@ -41,7 +42,7 @@ self.addEventListener("activate", (event) => {
 });
 
 function isSample(url) {
-  return /\/samples\/(?:flute|oboe|sax|piano)\/[0-9]+\.(?:wav|mp3)$/.test(url.pathname);
+  return /\/samples\/piano\/[0-9]+\.mp3$/.test(url.pathname);
 }
 
 async function sampleResponse(request) {
