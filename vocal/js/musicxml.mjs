@@ -59,11 +59,17 @@ export function textOf(xml, el) {
   return xml.slice(el.openEnd, el.innerEnd).replace(/\s+/g, " ").trim();
 }
 
-function roleOf(name) {
-  const n = name.toLowerCase();
-  if (n.includes("piano")) return "piano";
-  if (n.includes("tenor") || n === "tb") return "TB";
-  if (n.includes("soprano") || n === "sa") return "SA";
+const VOCAL_NAME = /vocal|melody|harmony|soprano|alto|tenor|bass|choir|voice|sing|lead/;
+const PIANO_NAME = /piano|keyboard|keys|organ/;
+
+function roleOf(name, blob = "") {
+  const titled = String(name || "").toLowerCase();
+  const all = `${titled} ${blob}`.toLowerCase();
+  // The part name wins over a piano instrument. A piano name or instrument
+  // covers every staff of that part, including the right hand.
+  if (!VOCAL_NAME.test(titled) && PIANO_NAME.test(all)) return "piano";
+  if (titled.includes("tenor") || titled === "tb") return "TB";
+  if (titled.includes("soprano") || titled === "sa") return "SA";
   return "other";
 }
 
@@ -302,8 +308,16 @@ export function parseScore(xml) {
   if (!root) throw new Error("This file is not a partwise MusicXML score.");
   const partList = child(root, "part-list");
   const names = new Map();
+  const blobs = new Map();
   for (const sp of partList?.children.filter((c) => c.tag === "score-part") || []) {
-    names.set(sp.attrs.id, textOf(xml, child(sp, "part-name")));
+    const name = textOf(xml, child(sp, "part-name"));
+    const abbr = textOf(xml, child(sp, "part-abbreviation"));
+    const instruments = sp.children
+      .filter((el) => el.tag === "score-instrument")
+      .map((el) => textOf(xml, child(el, "instrument-name")))
+      .join(" ");
+    names.set(sp.attrs.id, name);
+    blobs.set(sp.attrs.id, `${name} ${abbr} ${instruments}`);
   }
   const title =
     textOf(xml, child(child(root, "work"), "work-title")) ||
@@ -313,7 +327,7 @@ export function parseScore(xml) {
   const parts = [];
   for (const partEl of root.children.filter((c) => c.tag === "part")) {
     const name = names.get(partEl.attrs.id) || partEl.attrs.id || "Part";
-    const role = roleOf(name);
+    const role = roleOf(name, blobs.get(partEl.attrs.id) || name);
     let divisions = 1;
     let fifths = 0;
     let beats = 4;
@@ -514,6 +528,7 @@ export function parseScore(xml) {
   // single-staff layout, including a part that is not named Soprano or Tenor.
   // Cue-size notes on that one staff are the size convention.
   const vocals = parts.filter((part) => part.role !== "piano");
+  if (!vocals.length && parts.some((part) => part.role === "piano")) throw new Error(NEEDS_VOCAL_ERROR);
   const paired = parts.some((part) => part.role === "SA") && parts.some((part) => part.role === "TB");
   if (!paired && vocals.length === 1) {
     const vocal = vocals[0];
@@ -700,7 +715,8 @@ export function scoreReplacements(score) {
   const replacements = [];
   const inserts = new Map();
   for (const part of score.parts) {
-    const needed = part.role === "piano" ? new Map() : requiredAccidentals(part);
+    if (part.role === "piano") continue;
+    const needed = requiredAccidentals(part);
     const pool = [];
     for (const measure of part.measures) pool.push(...measure.notes, ...(measure.dropped || []));
     const byChord = new Map();
@@ -797,6 +813,8 @@ export const MXL_ERROR =
   "Compressed .mxl files aren't supported. Export uncompressed MusicXML (.musicxml) and open that.";
 
 export const NO_STAFF_ERROR = "This file has no staff with notes to edit.";
+
+export const NEEDS_VOCAL_ERROR = "This file needs a vocal staff.";
 
 // The file picker accepts every file. This checks the name and the bytes
 // before the score parser runs. .mxl is a zip package, which this editor does not read.

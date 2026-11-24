@@ -30,7 +30,10 @@ test("an unlabeled score can ask which staff to edit", () => {
   assert.match(appSource, /needsStaffChoice/);
   assert.match(appSource, /vocalStaffIndex/);
   assert.match(appSource, /NO_STAFF_ERROR/);
-  assert.doesNotMatch(appSource, /needs a vocal staff/);
+  assert.doesNotMatch(indexHtml, /id="piano-file"/);
+  assert.doesNotMatch(indexHtml, /id="piano-open"/);
+  assert.doesNotMatch(appSource, /loadPianoBytes/);
+  assert.doesNotMatch(css, /#piano-file/);
   const chooserRule = css.slice(css.indexOf("#chooser:not([hidden])"), css.indexOf("#chooser:not([hidden])") + 240);
   assert.match(chooserRule, /padding:/);
   assert.doesNotMatch(css, /#chooser\s*\{[^}]*display\s*:/);
