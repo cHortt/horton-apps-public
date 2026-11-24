@@ -2,11 +2,15 @@ import { dbToGain } from "./theory.mjs";
 
 // Playback levels for the Mix panel. null is Off and mutes that channel.
 // The fader is 1 dB steps from DB_MIN to DB_MAX. Slider 0 is Off.
+// Order matches the part tabs: Soprano, Alto, Tenor, Bass, then Piano.
 export const CHANNELS = ["S", "A", "T", "B", "P"];
 export const DB_MIN = -24;
 export const DB_MAX = 6;
 export const SLIDER_MAX = DB_MAX - DB_MIN + 1;
-const STORAGE_KEY = "vocal-mix-levels";
+// v1 stored S as the melody and A as the upper harmony. Those codes now mean
+// Soprano and Alto, so a saved melody level is moved onto A before it is read.
+const STORAGE_KEY = "vocal-mix-levels-v2";
+const LEGACY_KEY = "vocal-mix-levels";
 
 export function defaultLevels() {
   return { S: 0, A: 0, T: 0, B: 0, P: -6 };
@@ -95,11 +99,37 @@ export function channelsForScore(score) {
   return CHANNELS.filter((channel) => present.has(channel));
 }
 
+function readStored(storage, key) {
+  const raw = storage?.getItem?.(key);
+  if (raw == null || raw === "") return null;
+  return JSON.parse(raw);
+}
+
+// The first release of the sliders saved the melody on S and the upper
+// harmony on A. S is now Soprano and A is Alto, so those two levels swap
+// once. Tenor, Bass, and Piano kept their codes.
+export function migrateLegacyLevels(input) {
+  const levels = normalizeLevels(input);
+  const melody = levels.S;
+  const upper = levels.A;
+  levels.S = upper;
+  levels.A = melody;
+  return levels;
+}
+
 export function loadLevels(storage) {
   try {
-    const raw = storage?.getItem?.(STORAGE_KEY);
-    if (raw == null || raw === "") return defaultLevels();
-    return normalizeLevels(JSON.parse(raw));
+    const current = readStored(storage, STORAGE_KEY);
+    if (current) return normalizeLevels(current);
+    const legacy = readStored(storage, LEGACY_KEY);
+    if (!legacy) return defaultLevels();
+    const migrated = migrateLegacyLevels(legacy);
+    try {
+      storage?.setItem?.(STORAGE_KEY, JSON.stringify(migrated));
+    } catch {
+      /* storage can be unavailable */
+    }
+    return migrated;
   } catch {
     return defaultLevels();
   }

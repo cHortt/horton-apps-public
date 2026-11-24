@@ -201,7 +201,7 @@ test("synth melody notes from G3 through C5 play at the written pitch", () => {
     measures.push(measure(String(measures.length + 1), bodies.slice(i, i + 4).join("")));
   }
   const score = voiceScore(measures.join(""));
-  const melody = preparePlayback(score, null).events.filter((event) => event.channel === "S");
+  const melody = preparePlayback(score, null).events.filter((event) => event.channel === "A");
   assert.deepEqual(
     melody.map((event) => event.midi),
     Array.from({ length: 18 }, (_, i) => 55 + i),
@@ -231,7 +231,7 @@ test("an invisible unison note plays with its part", () => {
   assert.equal(small.visible, false);
   assert.deepEqual(small.parts, ["T"]);
   const events = playbackEvents(score).filter((event) => event.ql === 0);
-  assert.ok(events.some((event) => event.channel === "S" && event.midi === 67));
+  assert.ok(events.some((event) => event.channel === "A" && event.midi === 67));
   assert.ok(events.some((event) => event.channel === "T" && event.midi === 64));
 });
 
@@ -241,11 +241,11 @@ test("playback follows a written repeat and still uses an edited pitch", () => {
   );
   const timeline = playbackTimeline(score);
   assert.equal(timeline.endQl, 12);
-  const before = playbackEvents(score).filter((event) => event.channel === "S").map((event) => event.ql);
+  const before = playbackEvents(score).filter((event) => event.channel === "A").map((event) => event.ql);
   assert.deepEqual(before, [0, 4, 8]);
   const melody = score.parts[0].measures[0].notes.find((item) => item.pitch);
   setPitch(score, melody.id, { step: "E", alter: 0, octave: 4 });
-  const edited = playbackEvents(score).filter((event) => event.channel === "S" && (event.ql === 0 || event.ql === 4));
+  const edited = playbackEvents(score).filter((event) => event.channel === "A" && (event.ql === 0 || event.ql === 4));
   assert.equal(edited.length, 2);
   assert.ok(edited.every((event) => event.midi === 64));
 });

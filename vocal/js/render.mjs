@@ -1,8 +1,7 @@
 // Continuous two-staff vocal engraving. The piano staves are never drawn.
 // Hit targets are returned separately so a tap can ignore every part except the active one.
 
-import { isEdited } from "./musicxml.mjs";
-import { NO_STAFF_ERROR } from "./musicxml.mjs";
+import { NO_STAFF_ERROR, PART_NAMES, isEdited } from "./musicxml.mjs";
 import { staffStep } from "./theory.mjs";
 
 export const PART_COLORS = { S: "#d61f2c", A: "#e86a12", T: "#178a38", B: "#1d4ed8" };
@@ -328,7 +327,7 @@ function placeUnisonBadges(notes) {
   for (const group of groups.values()) {
     const unisons = group.filter((note) => note.unison);
     if (!unisons.length) continue;
-    const host = group.find((note) => !note.unison && note.parts?.includes("S")) || group.find((note) => !note.unison);
+    const host = group.find((note) => !note.unison && note.parts?.includes("A")) || group.find((note) => !note.unison);
     if (!host) continue;
     unisons.forEach((note, index) => {
       note.x = host.x + 18;
@@ -508,7 +507,7 @@ function partColor(note, state) {
   return PART_COLORS[part] || "#111";
 }
 
-const BADGE_NAME = { A: "High", T: "Low", B: "Bass", S: "Melody" };
+const BADGE_NAME = PART_NAMES;
 
 function drawNote(parts, note, state) {
   const selected = note.id === state.selectedId;

@@ -7,9 +7,11 @@ import {
   dbToSlider,
   defaultLevels,
   formatLevel,
+  loadLevels,
   playbackMix,
   sliderToDb,
 } from "../js/mix.mjs";
+import { PART_NAMES } from "../js/musicxml.mjs";
 import { dbToGain } from "../js/theory.mjs";
 
 function memoryStorage() {
@@ -98,12 +100,21 @@ test("a tab switch and a new file leave the levels", () => {
   assert.equal(play.gains.B, dbToGain(3));
 });
 
-test("slider labels come from the part-name table", () => {
-  const names = { S: "Alto", A: "Soprano", T: "Tenor", B: "Bass", P: "Piano" };
-  assert.equal(channelLabel(names, "S"), "Alto");
-  assert.equal(channelLabel(names, "A"), "Soprano");
-  assert.equal(channelLabel(names, "T"), "Tenor");
-  assert.equal(channelLabel(names, "P"), "Piano");
+test("slider labels follow the tab order", () => {
+  const labels = (score) => channelsForScore(score).map((channel) => channelLabel(PART_NAMES, channel));
+  assert.deepEqual(labels(null), ["Soprano", "Alto", "Tenor", "Piano"]);
+  const satb = { parts: [{ role: "SA", measures: [] }, { role: "TB", measures: [] }] };
+  assert.deepEqual(labels(satb), ["Soprano", "Alto", "Tenor", "Bass", "Piano"]);
+});
+
+test("a level saved before the rename stays on the same line", () => {
+  const storage = memoryStorage();
+  storage.setItem("vocal-mix-levels", JSON.stringify({ S: 4, A: -12, T: null, B: 1, P: -6 }));
+  const levels = loadLevels(storage);
+  assert.deepEqual(levels, { S: -12, A: 4, T: null, B: 1, P: -6 });
+  assert.equal(storage.getItem("vocal-mix-levels-v2"), JSON.stringify(levels));
+  storage.setItem("vocal-mix-levels", JSON.stringify({ S: 0, A: 6, T: 0, B: 0, P: -6 }));
+  assert.deepEqual(loadLevels(storage), levels);
 });
 
 test("bass is a slider only when the file has bass", () => {

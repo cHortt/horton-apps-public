@@ -88,13 +88,13 @@ async function loadSong(page) {
 }
 
 async function armUndo(page) {
-  await page.locator('[data-part="A"]').click();
-  const note = page.locator('ellipse[data-parts="A"][data-pitch="A4"][data-bar="2"]');
+  await page.locator('[data-part="S"]').click();
+  const note = page.locator('ellipse[data-parts="S"][data-pitch="A4"][data-bar="2"]');
   assert.equal(await note.count(), 1);
   await note.click();
   await page.locator("#up").click();
   await page.locator("#down").click();
-  await page.waitForFunction(() => document.querySelector("#readout")?.textContent === "High · bar 2 · A4");
+  await page.waitForFunction(() => document.querySelector("#readout")?.textContent === "Soprano · bar 2 · A4");
 }
 
 test("B4 chrome matches the mock and the staff wraps onto the same systems", { timeout: 180000 }, async () => {
@@ -129,7 +129,7 @@ test("B4 chrome matches the mock and the staff wraps onto the same systems", { t
       if (state === "more" || state === "mix") {
         await page.locator("#more").click();
         await page.waitForSelector("#drawer:not([hidden])");
-        await page.waitForFunction(() => document.querySelector("#drawer-heading").textContent === "High · bar 2");
+        await page.waitForFunction(() => document.querySelector("#drawer-heading").textContent === "Soprano · bar 2");
       }
       if (state === "mix") {
         await page.locator("#tab-mix").click();

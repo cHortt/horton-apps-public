@@ -4,7 +4,7 @@ import test from "node:test";
 import { zipSync } from "../js/fflate.mjs";
 import { addParts, removePart, setMelodyNotes, setStackCover, setUnisonNotes } from "../js/edit.mjs";
 import { exportMscz, msczReplacements, openMscz } from "../js/mscz.mjs";
-import { exportScore, iterNotes, parseScore, playbackEvents, scoreReplacements } from "../js/musicxml.mjs";
+import { PART_NAMES, exportScore, iterNotes, parseScore, playbackEvents, scoreReplacements } from "../js/musicxml.mjs";
 import { renderScore } from "../js/render.mjs";
 import { pitchToMidi } from "../js/theory.mjs";
 import { entryData, readZip, writeZip } from "../js/zip.mjs";
@@ -232,35 +232,56 @@ test("the editing controls are in the page", () => {
     assert.match(html, new RegExp(`id="${id}"`));
   }
   assert.match(html, /MuseScore 3 or 4/);
+  assert.match(html, />Soprano</);
+  assert.match(html, />Alto</);
+  assert.match(html, />Tenor</);
+  assert.match(html, /Add Soprano/);
+  assert.match(html, /Add Tenor/);
+  assert.match(html, /Soprano and Tenor/);
+  assert.doesNotMatch(html, />Melody</);
+  assert.doesNotMatch(html, />High</);
+  assert.doesNotMatch(html, />Low</);
 });
 
-test("MuseScore 3 cue-size notes assign Melody, High, and Low by size", () => {
+test("a size-convention file puts the melody on Alto, the upper cue on Soprano, and the lower cue on Tenor", () => {
   const packed = pack(MS3);
   const score = openMscz(packed);
   assert.equal(score.parts[0].convention, "size");
   const notes = score.parts[0].measures[0].notes.filter((note) => note.pitch);
-  assert.deepEqual(pitches(notes), ["T:C4", "S:E4", "A:G4", "S:C5", "S:B4", "A:D5", "T:G3", "S:C4"]);
-  assert.equal(notes.find((note) => note.parts[0] === "S" && note.startQl === 0).lyric.text, "la");
+  assert.deepEqual(pitches(notes), ["T:C4", "A:E4", "S:G4", "A:C5", "A:B4", "S:D5", "T:G3", "A:C4"]);
+  const chord = notes.filter((note) => note.startQl === 0);
+  const melody = chord.find((note) => !note.small);
+  const cues = chord.filter((note) => note.small).sort((a, b) => pitchToMidi(b.pitch) - pitchToMidi(a.pitch));
+  assert.equal(PART_NAMES[melody.parts[0]], "Alto");
+  assert.equal(melody.lyric.text, "la");
+  assert.equal(PART_NAMES[cues[0].parts[0]], "Soprano");
+  assert.equal(PART_NAMES[cues[1].parts[0]], "Tenor");
   assert.equal(notes.filter((note) => note.ambiguous).length, 0);
-  const again = readZip(exportMscz(score));
-  const original = readZip(packed);
-  for (let i = 0; i < original.length; i++) assert.deepEqual(again[i].compressed, original[i].compressed, original[i].name);
-  const view = renderScore(score, { activePart: "A", selectedId: notes[2].id, showChanges: false, playMeasure: 0 });
+  const view = renderScore(score, { activePart: "S", selectedId: notes[2].id, showChanges: false, playMeasure: 0 });
   assert.match(view.music, /rx="4.176"/);
   assert.doesNotMatch(view.music, />\?</);
 });
 
-test("a lone small note is High above the melody and Low otherwise", () => {
+test("a pre-change size file exports the same layout", () => {
+  const packed = pack(MS3);
+  const score = openMscz(packed);
+  const again = readZip(exportMscz(score));
+  const original = readZip(packed);
+  for (let i = 0; i < original.length; i++) assert.deepEqual(again[i].compressed, original[i].compressed, original[i].name);
+  assert.equal(exportScore(parseScore(XML)), XML);
+});
+
+test("a lone small note is Soprano above the melody and Tenor otherwise", () => {
   const score = openMscz(pack(MS3));
   const above = score.parts[0].measures[0].notes.filter((note) => note.startQl === 2);
-  assert.deepEqual(above.map((note) => note.parts[0]), ["S", "A"]);
+  assert.deepEqual(above.map((note) => note.parts[0]), ["A", "S"]);
   const below = score.parts[0].measures[0].notes.filter((note) => note.startQl === 3);
-  assert.deepEqual(below.map((note) => note.parts[0]), ["T", "S"]);
+  assert.deepEqual(below.map((note) => note.parts[0]), ["T", "A"]);
   const xmlScore = parseScore(XML);
   assert.equal(xmlScore.parts[0].convention, "size");
   assert.deepEqual(
     xmlScore.parts[0].measures[0].notes.filter((note) => note.pitch).map((note) => note.parts[0]),
-    ["T", "S", "A", "S", "S", "A", "T", "S"],
+    ["T", "A", "S", "A", "A", "S", "T", "A"],
   );
   assert.equal(exportScore(xmlScore), XML);
 });
@@ -269,7 +290,7 @@ test("size edits rewrite only the chords they touch", () => {
   const packed = pack(MS3);
   const score = openMscz(packed);
   const melodyOnly = score.parts[0].measures[0].notes.find((note) => note.pitch?.octave === 5);
-  addParts(score, [score.parts[0].measures[0].notes.filter((note) => note.startQl === melodyOnly.startQl)], ["A", "T"]);
+  addParts(score, [score.parts[0].measures[0].notes.filter((note) => note.startQl === melodyOnly.startQl)], ["S", "T"]);
   let reps = msczReplacements(score);
   let xml = new TextDecoder().decode(entryData(readZip(exportMscz(score)).find((entry) => entry.name.endsWith(".mscx"))));
   assertSplicesStayIn(MS3, xml, reps, [melodyOnly.chordSpan]);
@@ -286,32 +307,32 @@ test("size edits rewrite only the chords they touch", () => {
   assertSplicesStayIn(MS3, xml, reps, spans);
   assert.equal(openMscz(exportMscz(score)).parts[0].measures[0].notes.filter((note) => note.startQl === 0 && note.parts[0] === "T").length, 0);
 
-  const high = score.parts[0].measures[0].notes.find((note) => note.parts[0] === "A" && note.startQl === 0);
-  setMelodyNotes(score, [score.parts[0].measures[0].notes.filter((note) => note.startQl === 0)], "A");
+  const high = score.parts[0].measures[0].notes.find((note) => note.parts[0] === "S" && note.startQl === 0);
+  setMelodyNotes(score, [score.parts[0].measures[0].notes.filter((note) => note.startQl === 0)], "S");
   reps = msczReplacements(score);
   xml = new TextDecoder().decode(entryData(readZip(exportMscz(score)).find((entry) => entry.name.endsWith(".mscx"))));
   assert.ok(reps.every((rep) => rep.kind === "small" || rep.kind === "insert" || rep.kind === "delete-note"));
   const flipped = openMscz(exportMscz(score)).parts[0].measures[0].notes.filter((note) => note.startQl === 0);
-  assert.equal(flipped.find((note) => note.pitch.step === "G").parts[0], "S");
+  assert.equal(flipped.find((note) => note.pitch.step === "G").parts[0], "A");
   assert.equal(flipped.find((note) => note.pitch.step === "E").small, true);
 
   const fresh = openMscz(pack(MS3));
   const harmony = fresh.parts[0].measures[1].notes.find((note) => note.small);
-  setUnisonNotes(fresh, [fresh.parts[0].measures[1].notes.filter((note) => note.pitch)], "A");
+  setUnisonNotes(fresh, [fresh.parts[0].measures[1].notes.filter((note) => note.pitch)], "S");
   const unisonXml = new TextDecoder().decode(entryData(readZip(exportMscz(fresh)).find((entry) => entry.name.endsWith(".mscx"))));
   assert.match(unisonXml, /<small>1<\/small>\s*<visible>0<\/visible>/);
   const back = openMscz(exportMscz(fresh));
   const marked = back.parts[0].measures[1].notes.find((note) => note.unison);
-  assert.equal(marked.parts[0], "A");
-  assert.equal(pitchToMidi(marked.pitch), pitchToMidi(back.parts[0].measures[1].notes.find((note) => note.parts[0] === "S").pitch));
-  assert.match(renderScore(back, { activePart: "A", selectedId: marked.id, showChanges: false, playMeasure: 1 }).music, /High unison/);
+  assert.equal(marked.parts[0], "S");
+  assert.equal(pitchToMidi(marked.pitch), pitchToMidi(back.parts[0].measures[1].notes.find((note) => note.parts[0] === "A").pitch));
+  assert.match(renderScore(back, { activePart: "S", selectedId: marked.id, showChanges: false, playMeasure: 1 }).music, /Soprano unison/);
   assert.equal(harmony.small, true);
 });
 
 test("removing a tied small note strips only that tie", () => {
   const score = openMscz(pack(MS3));
   const chord = score.parts[0].measures[1].notes.filter((note) => note.pitch);
-  removePart(score, [chord], "A");
+  removePart(score, [chord], "S");
   const reps = msczReplacements(score);
   assert.ok(reps.some((rep) => rep.kind === "delete-note"));
   assert.ok(reps.some((rep) => rep.kind === "tie"));
@@ -332,15 +353,15 @@ test("MusicXML cue notes round-trip the same edits", () => {
   const reloaded = parseScore(xml);
   assert.deepEqual(
     reloaded.parts[0].measures[0].notes.filter((note) => note.startQl === 0).map((note) => note.parts[0]),
-    ["S", "A"],
+    ["A", "S"],
   );
   const melodyOnly = reloaded.parts[0].measures[0].notes.filter((note) => note.startQl === 1);
-  addParts(reloaded, [melodyOnly], ["A"]);
+  addParts(reloaded, [melodyOnly], ["S"]);
   const addedXml = exportScore(reloaded);
   assert.match(addedXml, /print-object|size="cue"/);
   const withHigh = parseScore(addedXml);
-  assert.equal(withHigh.parts[0].measures[0].notes.find((note) => note.startQl === 1 && note.small).parts[0], "A");
-  setUnisonNotes(withHigh, [withHigh.parts[0].measures[0].notes.filter((note) => note.startQl === 1)], "A");
+  assert.equal(withHigh.parts[0].measures[0].notes.find((note) => note.startQl === 1 && note.small).parts[0], "S");
+  setUnisonNotes(withHigh, [withHigh.parts[0].measures[0].notes.filter((note) => note.startQl === 1)], "S");
   const unison = exportScore(withHigh);
   assert.match(unison, /print-object="no"/);
   assert.match(unison, /<type size="cue">/);
@@ -357,13 +378,13 @@ test("a stacked two-note chord is ambiguous and the choice is not written into t
   const score = openMscz(packed);
   assert.equal(score.parts[0].convention, "legacy");
   const chord = score.parts[0].measures[0].notes.filter((note) => note.pitch && note.startQl === 1);
-  assert.deepEqual(chord.map((note) => note.parts[0]), ["A", "S"]);
+  assert.deepEqual(chord.map((note) => note.parts[0]), ["S", "A"]);
   assert.ok(chord.every((note) => note.ambiguous));
   assert.equal(chord[0].stackLower, true);
-  const view = renderScore(score, { activePart: "A", selectedId: chord[0].id, showChanges: false, playMeasure: 0 });
+  const view = renderScore(score, { activePart: "S", selectedId: chord[0].id, showChanges: false, playMeasure: 0 });
   assert.match(view.music, />\?</);
-  setStackCover([chord], ["A", "T"]);
-  assert.deepEqual(chord[0].parts, ["A", "T"]);
+  setStackCover([chord], ["S", "T"]);
+  assert.deepEqual(chord[0].parts, ["S", "T"]);
   const channels = playbackEvents(score).filter((event) => event.ql === 1).map((event) => event.channel).sort();
   assert.deepEqual(channels, ["A", "S", "T"]);
   const again = readZip(exportMscz(score));

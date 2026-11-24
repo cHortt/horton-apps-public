@@ -12,17 +12,13 @@ import {
 } from "./edit.mjs";
 import { channelLabel, channelsForScore, createMix, dbToSlider, formatLevel, sliderToDb, SLIDER_MAX } from "./mix.mjs";
 import { exportMscz, openMscz } from "./mscz.mjs";
-import { MXL_ERROR, NO_STAFF_ERROR, audioQlFromWritten, editedName, exportScore, findNote, iterNotes, onsetKey, parseScore, rejectOpenedFile, setPitch, writtenQlFromAudio } from "./musicxml.mjs";
+import { MXL_ERROR, NO_STAFF_ERROR, PART_NAMES, audioQlFromWritten, editedName, exportScore, findNote, iterNotes, onsetKey, parseScore, rejectOpenedFile, setPitch, writtenQlFromAudio } from "./musicxml.mjs";
 import { preparePlayback } from "./playback.mjs";
 import { hitTest, locateQl, renderScore } from "./render.mjs";
 import { chromaticMove, diatonicMove, samePitch, spellPretty } from "./theory.mjs";
 import { isZip, readZip } from "./zip.mjs";
 
-const PART_NAMES = { S: "Soprano", A: "Alto", T: "Tenor", B: "Bass", P: "Piano" };
-const SINGLE_NAMES = { S: "Melody", A: "High", T: "Low", B: "Bass", P: "Piano" };
-
 const STAFF_PAD = 8;
-const TAB_LABEL = { S: "Melody", A: "High", T: "Low", B: "Bass" };
 const HELP = "Mix holds tempo and the part volumes. File holds Open, Example and Export.";
 
 const els = {
@@ -78,7 +74,7 @@ const els = {
 const state = {
   score: null,
   filename: "",
-  activePart: "S",
+  activePart: "A",
   selectedId: null,
   showChanges: false,
   playMeasure: 0,
@@ -225,11 +221,6 @@ function render() {
   refreshControls();
 }
 
-function nameMap() {
-  const single = state.score && !state.score.parts.some((part) => part.role === "TB");
-  return single ? SINGLE_NAMES : PART_NAMES;
-}
-
 function selectionChords() {
   const part = vocalPart(state.score);
   if (!part) return [];
@@ -266,7 +257,7 @@ function currentMix() {
 }
 
 function renderMixSliders() {
-  const names = nameMap();
+  const names = PART_NAMES;
   const channels = channelsForScore(state.score);
   const levels = mix.levels();
   const host = els.mixSliders;
@@ -332,13 +323,13 @@ function resetMix() {
 
 function refreshControls() {
   const selected = state.selectedId ? findNote(state.score, state.selectedId) : null;
-  const names = nameMap();
-  const single = !state.score || names === SINGLE_NAMES;
+  const names = PART_NAMES;
+  const single = !state.score || !state.score.parts.some((part) => part.role === "TB");
   const hideBass = !state.score || (single && !iterNotes(state.score).some((note) => note.parts.includes("B")));
   for (const button of document.querySelectorAll("[data-part]")) {
     const on = button.dataset.part === state.activePart;
     button.hidden = button.dataset.part === "B" && hideBass;
-    const label = single ? TAB_LABEL[button.dataset.part] : button.dataset.part;
+    const label = names[button.dataset.part];
     const dot = button.querySelector(".dot");
     if (dot) {
       let text = dot.nextSibling;
@@ -348,7 +339,7 @@ function refreshControls() {
       }
       text.nodeValue = label;
     }
-    button.setAttribute("aria-label", single ? TAB_LABEL[button.dataset.part] : names[button.dataset.part]);
+    button.setAttribute("aria-label", label);
     button.setAttribute("aria-pressed", on ? "true" : "false");
   }
   const size = vocalPart(state.score)?.convention === "size";
@@ -358,15 +349,15 @@ function refreshControls() {
   els.scopeBar.setAttribute("aria-pressed", state.scope === "bars" ? "true" : "false");
   els.addHigh.disabled = !size || !chords.length || busy;
   els.addLow.disabled = !size || !chords.length || busy;
-  els.removePart.disabled = !size || !chords.length || state.activePart === "S" || busy;
-  els.removePart.textContent = state.activePart === "S" || state.activePart === "P" ? "Remove" : `Remove ${names[state.activePart]}`;
-  els.makeMelody.disabled = !size || !chords.length || busy || state.activePart === "S" || state.activePart === "B" && hideBass;
+  els.removePart.disabled = !size || !chords.length || state.activePart === "A" || busy;
+  els.removePart.textContent = state.activePart === "A" || state.activePart === "P" ? "Remove" : `Remove ${names[state.activePart]}`;
+  els.makeMelody.disabled = !size || !chords.length || busy || state.activePart === "A" || state.activePart === "B" && hideBass;
   els.unison.disabled = !size || !chords.length || busy;
   const ambiguous = chords.filter((chord) => chord.some((note) => note.ambiguous));
   els.ambiguous.hidden = ambiguous.length === 0;
   if (ambiguous.length) {
     const lower = ambiguous.flatMap((chord) => chord).find((note) => note.stackLower);
-    const cover = (lower?.partCover || ["A"]).join("");
+    const cover = (lower?.partCover || ["S"]).join("");
     for (const button of document.querySelectorAll("[data-cover]")) {
       button.setAttribute("aria-pressed", button.dataset.cover === cover ? "true" : "false");
     }
@@ -379,7 +370,7 @@ function refreshControls() {
   const hasAmbiguous = state.score && iterNotes(state.score).some((note) => note.ambiguous);
   els.hint.hidden = false;
   els.hint.textContent = !size && hasAmbiguous
-    ? "A ? marks a two-note chord. Choose whether the lower note is High, Low, or both."
+    ? "A ? marks a two-note chord. Choose whether the lower note is Soprano, Tenor, or both."
     : HELP;
   const canEdit = !!selected?.note.pitch && !state.transport;
   for (const id of ["up", "down", "sharp", "flat"]) els[id].disabled = !canEdit;
@@ -773,14 +764,14 @@ els.scopeBar.addEventListener("click", () => {
   if (state.score) render();
   else refreshControls();
 });
-els.addHigh.addEventListener("click", () => withStructure(() => addParts(state.score, selectionChords(), ["A"])));
+els.addHigh.addEventListener("click", () => withStructure(() => addParts(state.score, selectionChords(), ["S"])));
 els.addLow.addEventListener("click", () => withStructure(() => addParts(state.score, selectionChords(), ["T"])));
 els.removePart.addEventListener("click", () => withStructure(() => removePart(state.score, selectionChords(), state.activePart)));
 els.makeMelody.addEventListener("click", () => withStructure(() => setMelodyNotes(state.score, selectionChords(), state.activePart)));
 els.unison.addEventListener("click", () => withStructure(() => setUnisonNotes(state.score, selectionChords(), state.activePart)));
 for (const button of document.querySelectorAll("[data-cover]")) {
   button.addEventListener("click", () => {
-    const cover = button.dataset.cover === "AT" ? ["A", "T"] : [button.dataset.cover];
+    const cover = button.dataset.cover === "ST" ? ["S", "T"] : [button.dataset.cover];
     withStructure(() => setStackCover(selectionChords(), cover));
   });
 }
