@@ -34,7 +34,7 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 button, input, label { font: inherit; color: inherit; }
-button, label#open, label#piano-open {
+button, label#open {
   min-height: 44px;
   min-width: 44px;
   padding: 0 12px;
@@ -45,7 +45,7 @@ button, label#open, label#piano-open {
   touch-action: manipulation;
   cursor: pointer;
 }
-label#open, label#piano-open {
+label#open {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -136,7 +136,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid #8eb4f0; outline-
 .drawer .grab { width: 36px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 6px; }
 .drawer h2 { margin: 10px 4px 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .drawer .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.drawer .grid button, .drawer .grid label#open, .drawer .grid label#piano-open { text-align: left; width: 100%; }
+.drawer .grid button, .drawer .grid label#open { text-align: left; width: 100%; }
 .drawer .help { margin: 10px 4px 0; color: var(--muted); font-size: 13px; font-weight: 600; }
 .sections { margin: 2px 0 6px; }
 .sections button { flex: 1; }
@@ -244,18 +244,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid #8eb4f0; outline-
   .drawer { left: auto; right: 16px; width: 460px; }
 }
 #file {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  opacity: 0;
-  font-size: 16px;
-  cursor: pointer;
-}
-#piano-file {
   position: absolute;
   inset: 0;
   width: 100%;

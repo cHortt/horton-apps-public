@@ -5,7 +5,7 @@ import test from "node:test";
 import { zipSync } from "../js/fflate.mjs";
 import { chromaticMove, diatonicMove, pitchToMidi } from "../js/theory.mjs";
 import { exportMscz, openMscz, pitchFromMidiTpc, tpcFromPitch } from "../js/mscz.mjs";
-import { NO_STAFF_ERROR, editedName, exportScore, isEdited, iterNotes, parseScore, playbackEvents, setPitch } from "../js/musicxml.mjs";
+import { NEEDS_VOCAL_ERROR, NO_STAFF_ERROR, editedName, exportScore, isEdited, iterNotes, parseScore, playbackEvents, setPitch } from "../js/musicxml.mjs";
 import { renderScore } from "../js/render.mjs";
 import { crc32, entryData, readZip, writeZip } from "../js/zip.mjs";
 
@@ -569,7 +569,7 @@ const UNLABELED_LYRIC_PIANO = `<?xml version="1.0" encoding="UTF-8"?>
       <trackName></trackName>
       <Instrument id="grand-piano">
         <trackName></trackName>
-        <instrumentId>keyboard.piano.grand</instrumentId>
+        <instrumentId>voice.vocals</instrumentId>
       </Instrument>
     </Part>
     <Staff id="1">
@@ -597,7 +597,7 @@ const UNLABELED_LYRIC_PIANO = `<?xml version="1.0" encoding="UTF-8"?>
 </museScore>
 `;
 
-function pianoScore(staves, { trackName = "", longName = "" } = {}) {
+function pianoScore(staves, { trackName = "", longName = "", instrumentId = "keyboard.piano.grand" } = {}) {
   const heads = staves
     .map(() => `<Staff><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff>`)
     .join("");
@@ -616,14 +616,14 @@ function pianoScore(staves, { trackName = "", longName = "" } = {}) {
   <programVersion>4.7.7</programVersion>
   <Score>
     <Division>480</Division>
-    <Part id="1">${heads}<trackName>${trackName}</trackName><Instrument id="grand-piano">${name}<instrumentId>keyboard.piano.grand</instrumentId></Instrument></Part>
+    <Part id="1">${heads}<trackName>${trackName}</trackName><Instrument id="grand-piano">${name}<instrumentId>${instrumentId}</instrumentId></Instrument></Part>
     ${bodies}
   </Score>
 </museScore>
 `;
 }
 
-test("an unlabeled piano instrument with lyrics and stacked chords opens as one vocal staff", () => {
+test("an unlabeled voice with lyrics and stacked chords opens as one vocal staff", () => {
   const packed = pack(UNLABELED_LYRIC_PIANO);
   const score = openMscz(packed);
   assert.equal(score.needsStaffChoice, undefined);
@@ -667,7 +667,7 @@ test("an unlabeled piano instrument with lyrics and stacked chords opens as one 
     cutRanges(afterXml, changedSpans(iterNotes(after).find((note) => note.id === top.id))),
     cutRanges(UNLABELED_LYRIC_PIANO, changedSpans(top)),
   );
-  assert.match(afterXml, /<instrumentId>keyboard\.piano\.grand<\/instrumentId>/);
+  assert.match(afterXml, /<instrumentId>voice\.vocals<\/instrumentId>/);
   assert.doesNotMatch(afterXml, /longName/);
   assert.match(afterXml, /<trackName><\/trackName>/);
   assert.match(afterXml, /<text>la<\/text>/);
@@ -684,6 +684,7 @@ test("lyrics pick the staff when no part is named as a voice", () => {
       { midi: 48, tpc: 14, clef: "F" },
       { midi: 72, tpc: 14, clef: "G", lyric: "la" },
     ],
+    { instrumentId: "pluck.synth" },
   );
   const score = openMscz(pack(xml));
   assert.equal(score.needsStaffChoice, undefined);
@@ -699,6 +700,7 @@ test("lyrics pick the staff when no part is named as a voice", () => {
       { midi: 72, tpc: 14, lyric: "la" },
       { midi: 48, tpc: 14, clef: "F", lyric: "lo" },
     ],
+    { instrumentId: "pluck.synth" },
   );
   assert.deepEqual(
     openMscz(pack(both)).parts.map((part) => part.role),
@@ -737,12 +739,27 @@ test("a named voice stays the edited staff when the instrument id is still piano
 });
 
 test("a single unlabeled staff is edited even without lyrics", () => {
-  const score = openMscz(pack(pianoScore([{ midi: 60, tpc: 14 }])));
+  assert.throws(
+    () => openMscz(pack(pianoScore([{ midi: 60, tpc: 14 }]))),
+    new RegExp(NEEDS_VOCAL_ERROR.replace(/[.]/g, "\\.")),
+  );
+  const score = openMscz(pack(pianoScore([{ midi: 60, tpc: 14 }], { instrumentId: "pluck.synth" })));
   assert.deepEqual(
     score.parts.map((part) => part.role),
     ["SA"],
   );
   assert.equal(pitchToMidi(score.parts[0].measures[0].notes[0].pitch), 60);
+});
+
+test("a piano grand staff with no vocal staff needs a vocal staff", () => {
+  const xml = pianoScore(
+    [
+      { midi: 64, tpc: 18, clef: "G", lyric: "la" },
+      { midi: 48, tpc: 14, clef: "F" },
+    ],
+    { trackName: "Piano" },
+  );
+  assert.throws(() => openMscz(pack(xml)), new RegExp(NEEDS_VOCAL_ERROR.replace(/[.]/g, "\\.")));
 });
 
 test("several unlabeled staves ask for a choice, and the choice does not relabel the instrument", () => {
@@ -751,7 +768,7 @@ test("several unlabeled staves ask for a choice, and the choice does not relabel
       { midi: 64, tpc: 18, clef: "G" },
       { midi: 48, tpc: 14, clef: "F" },
     ],
-    { trackName: "Piano" },
+    { instrumentId: "pluck.synth" },
   );
   const packed = pack(xml);
   const choice = openMscz(packed);
@@ -759,7 +776,7 @@ test("several unlabeled staves ask for a choice, and the choice does not relabel
   assert.equal(choice.parts, undefined);
   assert.deepEqual(
     choice.choices.map((item) => item.label),
-    ["Staff 1, Piano, treble clef", "Staff 2, Piano, bass clef"],
+    ["Staff 1, treble clef", "Staff 2, bass clef"],
   );
   const score = openMscz(packed, { vocalStaffIndex: choice.choices[1].index });
   assert.deepEqual(
@@ -781,16 +798,20 @@ test("several unlabeled staves ask for a choice, and the choice does not relabel
     cutRanges(afterXml, changedSpans(iterNotes(after).find((item) => item.id === note.id))),
     cutRanges(xml, changedSpans(note)),
   );
-  assert.match(afterXml, /<instrumentId>keyboard\.piano\.grand<\/instrumentId>/);
-  assert.match(afterXml, /<trackName>Piano<\/trackName>/);
+  assert.match(afterXml, /<instrumentId>pluck\.synth<\/instrumentId>/);
+  assert.match(afterXml, /<trackName><\/trackName>/);
   assert.equal(afterXml.split("<pitch>64</pitch>").length, xml.split("<pitch>64</pitch>").length);
 });
 
 test("a file with no pitched notes says so", () => {
   const empty = `<?xml version="1.0" encoding="UTF-8"?>\n<museScore version="4.20"><programVersion>4.2.0</programVersion><Score></Score></museScore>\n`;
   assert.throws(() => openMscz(pack(empty)), new RegExp(NO_STAFF_ERROR.replace(/[.]/g, "\\.")));
-  assert.throws(() => openMscz(pack(pianoScore([{ rest: true }, { rest: true }]))), new RegExp(NO_STAFF_ERROR.replace(/[.]/g, "\\.")));
-  const onlyLower = openMscz(pack(pianoScore([{ rest: true, clef: "G" }, { midi: 50, tpc: 16, clef: "F" }])));
+  assert.throws(() => openMscz(pack(pianoScore([{ rest: true }, { rest: true }]))), new RegExp(NEEDS_VOCAL_ERROR.replace(/[.]/g, "\\.")));
+  assert.throws(
+    () => openMscz(pack(pianoScore([{ rest: true, clef: "G" }, { midi: 50, tpc: 16, clef: "F" }]))),
+    new RegExp(NEEDS_VOCAL_ERROR.replace(/[.]/g, "\\.")),
+  );
+  const onlyLower = openMscz(pack(pianoScore([{ rest: true, clef: "G" }, { midi: 50, tpc: 16, clef: "F" }], { instrumentId: "pluck.synth" })));
   assert.equal(onlyLower.needsStaffChoice, undefined);
   assert.equal(pitchToMidi(onlyLower.parts[0].measures[0].notes.find((note) => note.pitch).pitch), 50);
   assert.equal(onlyLower.parts[0].measures[0].clef.sign, "F");
@@ -850,7 +871,11 @@ function conventionScore(instrumentId) {
 }
 
 test("one treble staff follows voice 1 Melody, voice 2 High, voice 3 Low", () => {
-  for (const instrumentId of ["keyboard.piano.grand", "voice.ensemble"]) {
+  assert.throws(
+    () => openMscz(pack(conventionScore("keyboard.piano.grand"))),
+    new RegExp(NEEDS_VOCAL_ERROR.replace(/[.]/g, "\\.")),
+  );
+  for (const instrumentId of ["voice.ensemble"]) {
     const xml = conventionScore(instrumentId);
     const packed = pack(xml);
     const score = openMscz(packed);

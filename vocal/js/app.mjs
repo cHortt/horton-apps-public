@@ -42,7 +42,6 @@ const els = {
   play: document.querySelector("#play"),
   mixSliders: document.querySelector("#mix-sliders"),
   mixReset: document.querySelector("#mix-reset"),
-  piano: document.querySelector("#piano-file"),
   playIcon: document.querySelector("#play-icon"),
   playFrom: document.querySelector("#play-from"),
   playFromIcon: document.querySelector("#play-from-icon"),
@@ -84,8 +83,6 @@ const state = {
   showChanges: false,
   playMeasure: 0,
   bpm: 68,
-  pianoPart: null,
-  pianoName: "",
   arming: false,
   undo: [],
   redo: [],
@@ -128,8 +125,6 @@ function acceptScore(score, filename) {
   state.barAnchor = null;
   state.barStart = 0;
   state.barEnd = 0;
-  state.pianoPart = null;
-  state.pianoName = "";
   mix.openFile();
   els.tempo.value = String(Math.max(40, Math.min(160, state.bpm)));
   els.bpm.textContent = els.tempo.value;
@@ -262,9 +257,7 @@ function selectionChords() {
 }
 
 function fileLabelText() {
-  if (!state.filename && state.pianoName) return state.pianoName;
   if (!state.filename) return "No file loaded";
-  if (state.pianoName) return `${state.filename} + ${state.pianoName}`;
   return state.filename;
 }
 
@@ -598,12 +591,12 @@ function togglePlay() {
         refreshControls();
         return;
       }
-      const prepared = preparePlayback(state.score, state.pianoPart);
+      const prepared = preparePlayback(state.score, null);
       const written = state.layout?.measures[state.playMeasure]?.startQl ?? 0;
       state.engine.setMix(mix.playback());
       state.transport = startTransport({
         engine: state.engine,
-        getEvents: () => preparePlayback(state.score, state.pianoPart).events,
+        getEvents: () => preparePlayback(state.score, null).events,
         fromQl: audioQlFromWritten(prepared.visits, written),
         endQl: prepared.endQl,
         quarterBpm: state.bpm,
@@ -727,39 +720,6 @@ els.file.addEventListener("change", () => {
   reader.readAsArrayBuffer(file);
 });
 
-function loadPianoBytes(bytes, filename) {
-  let score;
-  try {
-    if (/\.mscz$/i.test(filename) || (isZip(bytes) && zipHasMscx(bytes))) {
-      score = openMscz(bytes);
-    } else {
-      const xml = new TextDecoder("utf-8").decode(bytes);
-      const rejected = rejectOpenedFile(filename, xml);
-      if (rejected) {
-        showError(rejected);
-        return;
-      }
-      score = parseScore(xml);
-    }
-  } catch (error) {
-    showError(error.message || "Could not read that piano file.");
-    return;
-  }
-  if (!score || score.needsStaffChoice) {
-    showError("That file has no piano part.");
-    return;
-  }
-  const piano = score.parts.find((part) => part.role === "piano");
-  if (!piano) {
-    showError("That file has no piano part.");
-    return;
-  }
-  state.pianoPart = piano;
-  state.pianoName = filename;
-  showError("");
-  els.label.textContent = fileLabelText();
-}
-
 function zipHasMscx(bytes) {
   try {
     return readZip(bytes).some((entry) => /\.mscx$/i.test(entry.name));
@@ -836,15 +796,6 @@ for (const id of ["part", "mix", "file"]) {
 }
 els.mixSliders.addEventListener("input", onMixInput);
 els.mixReset.addEventListener("click", resetMix);
-els.piano.addEventListener("change", () => {
-  const file = els.piano.files?.[0];
-  els.piano.value = "";
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => loadPianoBytes(new Uint8Array(reader.result || new ArrayBuffer(0)), file.name);
-  reader.onerror = () => showError("Could not read that piano file.");
-  reader.readAsArrayBuffer(file);
-});
 els.tempo.addEventListener("input", () => {
   state.bpm = Number(els.tempo.value);
   els.bpm.textContent = els.tempo.value;

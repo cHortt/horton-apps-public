@@ -250,7 +250,7 @@ test("playback follows a written repeat and still uses an edited pitch", () => {
   assert.ok(edited.every((event) => event.midi === 64));
 });
 
-test("chord symbols become block chords until a piano part is loaded", () => {
+test("chord symbols become block chords when the score has no piano part", () => {
   const no3 = `<degree><degree-value>3</degree-value><degree-alter>0</degree-alter><degree-type>subtract</degree-type></degree>`;
   const score = voiceScore(
     measure(
@@ -285,8 +285,12 @@ test("a separate piano file lines up by measure number", () => {
   const vocal = voiceScore(`${measure("1", note("C", 4, { dur: 4, type: "whole" }))}${measure("2", note("D", 4, { dur: 4, type: "whole" }))}`);
   const pianoScore = parseScore(`<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
-  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
-  <part id="P1">
+  <part-list>
+    <score-part id="P1"><part-name>Voice</part-name></score-part>
+    <score-part id="P2"><part-name>Piano</part-name></score-part>
+  </part-list>
+  <part id="P1">${measure("1", note("C", 4))}</part>
+  <part id="P2">
     ${measure("9", note("D", 5))}
     ${measure("2", note("C", 4))}
   </part>

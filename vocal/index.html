@@ -28,7 +28,7 @@
 </div>
 <main id="staff">
   <div id="empty">
-    <p>Open a Piano Vocal MusicXML file or a MuseScore 3 or 4 file (.mscz). Only the vocal staves are shown. Chord symbols stay as written. Use Piano to add the piano part, or the chord symbols play as simple chords.</p>
+    <p>Open a MusicXML file or a MuseScore 3 or 4 file (.mscz). The vocal staves are shown and edited. A piano grand staff in the same file plays along and is not edited. Chord symbols stay as written, and they play as simple chords when the file has no piano.</p>
     <p>Nothing is uploaded. The file stays on this device.</p>
   </div>
 </main>
@@ -89,7 +89,6 @@
     <h2>File</h2>
     <div class="grid">
       <label for="file" id="open">Open<input id="file" type="file"></label>
-      <label for="piano-file" id="piano-open">Piano<input id="piano-file" type="file"></label>
       <button type="button" id="example">Example</button>
       <button type="button" id="export" disabled>Export</button>
     </div>

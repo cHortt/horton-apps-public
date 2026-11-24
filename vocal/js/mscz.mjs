@@ -15,6 +15,7 @@ import {
   elementRemovalSpan,
   indentAt,
   isEdited,
+  NEEDS_VOCAL_ERROR,
   NO_STAFF_ERROR,
   parseDocument,
   textOf,
@@ -177,15 +178,33 @@ function nameBlob(meta) {
   return `${meta.trackName} ${meta.longName} ${meta.shortName} ${meta.instrumentId}`.toLowerCase();
 }
 
+function partNames(meta) {
+  return `${meta.trackName} ${meta.longName} ${meta.shortName}`.toLowerCase();
+}
+
 function isClearlyVocal(meta) {
   // A voice.* instrument still counts when longName, shortName, and trackName are blank.
   return VOCAL_NAME.test(nameBlob(meta));
 }
 
+function isVocalNamed(meta) {
+  if (VOCAL_NAME.test(partNames(meta))) return true;
+  const inst = String(meta.instrumentId || "").toLowerCase();
+  if (PIANO_NAME.test(inst)) return false;
+  return VOCAL_NAME.test(inst);
+}
+
+function isPianoNamed(meta) {
+  // A vocal name wins when the instrument id is still a piano.
+  if (isVocalNamed(meta)) return false;
+  return PIANO_NAME.test(nameBlob(meta));
+}
+
+// Piano is the whole part: both hands of a grand staff share its name and
+// instrument, so the treble staff is the right hand and never a vocal line.
+// A staff with no piano name and no piano instrument stays vocal.
 function kindOf(meta) {
-  if (isClearlyVocal(meta)) return "vocal";
-  if (PIANO_NAME.test(nameBlob(meta))) return "piano";
-  if (meta.staffCount >= 2) return "piano";
+  if (isPianoNamed(meta)) return "piano";
   return "vocal";
 }
 
@@ -728,16 +747,25 @@ export function openMscz(bytes, options = {}) {
   const staves = staffEls.map((el, index) => parseStaff(xml, el, metas[index] || { staffCount: 1, trackName: "", longName: "", shortName: "", instrumentId: "" }, index));
   const unresolvedTies = linkTies(staves);
   const requested = Number.isInteger(options.vocalStaffIndex) ? options.vocalStaffIndex : null;
+  const pianoStaves = staves.filter((staff) => staff.kind === "piano");
+  const vocalStaves = staves.filter((staff) => staff.kind !== "piano");
   let vocal;
-  let piano;
-  if (staves.some((staff) => isClearlyVocal(staff.meta))) {
-    vocal = staves.filter((staff) => staff.kind === "vocal");
-    piano = staves.filter((staff) => staff.kind === "piano");
+  let piano = [...pianoStaves];
+  if (!vocalStaves.length) {
+    if (pianoStaves.length) throw new Error(NEEDS_VOCAL_ERROR);
+    throw new Error(NO_STAFF_ERROR);
+  }
+  if (vocalStaves.some((staff) => isClearlyVocal(staff.meta))) {
+    vocal = vocalStaves;
   } else {
-    const selected = selectUnlabeled(staves, requested);
+    const selected = selectUnlabeled(vocalStaves, requested);
     if (selected.needsStaffChoice) return { needsStaffChoice: true, choices: selected.choices };
     vocal = selected.vocal;
-    piano = selected.piano;
+    piano = piano.concat(selected.piano);
+  }
+  if (!vocal.some(staffHasNotes)) {
+    if (pianoStaves.length) throw new Error(NEEDS_VOCAL_ERROR);
+    throw new Error(NO_STAFF_ERROR);
   }
   const parts = assembleParts(vocal, piano);
   const quarterBpm = staves.map((staff) => staff.quarterBpm).find((tempo) => tempo != null) ?? 120;
@@ -775,6 +803,7 @@ export function msczReplacements(score) {
     inserts.set(at, `${inserts.get(at) || ""}${text}`);
   };
   for (const part of score.parts) {
+    if (part.role === "piano") continue;
     for (const measure of part.measures) {
       for (const note of [...measure.notes, ...(measure.dropped || [])]) {
         if (note.removed && !note.added && note.elementSpan) {
