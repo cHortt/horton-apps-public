@@ -1,0 +1,165 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { zipSync } from "../js/fflate.mjs";
+import { mixState } from "../js/mix.mjs";
+import { openMscz } from "../js/mscz.mjs";
+import { parseScore, playbackEvents, playbackTimeline, setPitch } from "../js/musicxml.mjs";
+import { alignPianoEvents, blockChordMidis, preparePlayback } from "../js/playback.mjs";
+import { INSTRUMENTS, soundingMidi } from "../js/samples.mjs";
+import { dbToGain } from "../js/theory.mjs";
+
+function voiceScore(measures, name = "Voice") {
+  return parseScore(`<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>${name}</part-name></score-part></part-list>
+  <part id="P1">${measures}</part>
+</score-partwise>`);
+}
+
+function measure(number, inner, beats = 4) {
+  return `<measure number="${number}">
+    <attributes><divisions>1</divisions><time><beats>${beats}</beats><beat-type>4</beat-type></time></attributes>
+    ${inner}
+  </measure>`;
+}
+
+function note(step, octave, { cue = false, hidden = false, dur = 1, type = "quarter" } = {}) {
+  const print = hidden ? ` print-object="no"` : "";
+  const size = cue ? ` size="cue"` : "";
+  const chord = cue ? "<chord/>" : "";
+  return `<note${print}>${chord}<pitch><step>${step}</step><octave>${octave}</octave></pitch><duration>${dur}</duration><type${size}>${type}</type></note>`;
+}
+
+function harmony(step, kind, { bass = "", alter = "", bassAlter = "", degrees = "" } = {}) {
+  const rootAlter = alter === "" ? "" : `<root-alter>${alter}</root-alter>`;
+  const bassXml = bass
+    ? `<bass><bass-step>${bass}</bass-step>${bassAlter === "" ? "" : `<bass-alter>${bassAlter}</bass-alter>`}</bass>`
+    : "";
+  return `<harmony><root><root-step>${step}</root-step>${rootAlter}</root><kind>${kind}</kind>${bassXml}${degrees}</harmony>`;
+}
+
+test("rehearsal mixes keep melody and piano aligned between High and Low", () => {
+  const all = mixState("all");
+  const melody = mixState("melody");
+  const high = mixState("high");
+  const low = mixState("low");
+  for (const channel of ["S", "A", "T", "B"]) assert.equal(all.gains[channel], 1);
+  assert.ok(Math.abs(all.gains.P - dbToGain(-6)) < 1e-12);
+  assert.equal(melody.mutes.A, true);
+  assert.equal(melody.mutes.T, true);
+  assert.equal(melody.gains.S, 1);
+  assert.equal(high.gains.A, 1);
+  assert.ok(Math.abs(high.gains.S - dbToGain(-12)) < 1e-12);
+  assert.equal(high.mutes.T, true);
+  assert.equal(low.gains.S, high.gains.S);
+  assert.equal(low.gains.P, high.gains.P);
+  assert.equal(low.mutes.A, true);
+  assert.equal(high.mutes.B, true);
+  assert.equal(low.mutes.B, true);
+  assert.ok(Math.abs(low.gains.T - dbToGain(3)) < 1e-12);
+  assert.ok(Math.abs(melody.gains.P - dbToGain(-6)) < 1e-12);
+});
+
+test("flute notes below the sample range move up one octave and the sax reaches G3", () => {
+  assert.equal(soundingMidi(INSTRUMENTS.flute.floor, 55), 67);
+  assert.equal(soundingMidi(INSTRUMENTS.flute.floor, 60), 60);
+  assert.equal(soundingMidi(INSTRUMENTS.sax.floor, 55), 55);
+  assert.ok(INSTRUMENTS.sax.notes.some((note) => note.midi <= 55));
+  assert.ok(INSTRUMENTS.flute.notes.every((note) => note.midi >= 60));
+  assert.equal(INSTRUMENTS.flute.notes[0].url.endsWith(".wav"), true);
+  assert.equal(INSTRUMENTS.piano.oneShot, true);
+});
+
+test("an invisible unison note plays with its part", () => {
+  const score = voiceScore(
+    measure(
+      "1",
+      `${note("G", 4)}${note("E", 4, { cue: true, hidden: true })}`,
+    ),
+  );
+  const small = score.parts[0].measures[0].notes.find((item) => item.unison);
+  assert.ok(small);
+  assert.equal(small.visible, false);
+  assert.deepEqual(small.parts, ["T"]);
+  const events = playbackEvents(score).filter((event) => event.ql === 0);
+  assert.ok(events.some((event) => event.channel === "S" && event.midi === 67));
+  assert.ok(events.some((event) => event.channel === "T" && event.midi === 64));
+});
+
+test("playback follows a written repeat and still uses an edited pitch", () => {
+  const score = voiceScore(
+    `${measure("1", `<barline location="left"><repeat direction="forward"/></barline>${note("C", 4)}<barline location="right"><repeat direction="backward"/></barline>`)}${measure("2", note("D", 4))}`,
+  );
+  const timeline = playbackTimeline(score);
+  assert.equal(timeline.endQl, 12);
+  const before = playbackEvents(score).filter((event) => event.channel === "S").map((event) => event.ql);
+  assert.deepEqual(before, [0, 4, 8]);
+  const melody = score.parts[0].measures[0].notes.find((item) => item.pitch);
+  setPitch(score, melody.id, { step: "E", alter: 0, octave: 4 });
+  const edited = playbackEvents(score).filter((event) => event.channel === "S" && (event.ql === 0 || event.ql === 4));
+  assert.equal(edited.length, 2);
+  assert.ok(edited.every((event) => event.midi === 64));
+});
+
+test("chord symbols become block chords until a piano part is loaded", () => {
+  const no3 = `<degree><degree-value>3</degree-value><degree-alter>0</degree-alter><degree-type>subtract</degree-type></degree>`;
+  const score = voiceScore(
+    measure(
+      "1",
+      `${harmony("G", "major", { degrees: no3 })}${note("G", 4)}${harmony("G", "major")}${note("G", 4)}${harmony("E", "minor")}${note("E", 4)}${harmony("D", "suspended-fourth")}${note("D", 4)}`,
+    ),
+  );
+  const g = score.parts[0].measures[0].harmonies[1];
+  assert.deepEqual(blockChordMidis(g), [55, 67, 71, 74]);
+  assert.deepEqual(blockChordMidis(score.parts[0].measures[0].harmonies[0]), [55, 67, 74]);
+  assert.deepEqual(blockChordMidis(score.parts[0].measures[0].harmonies[2]), [52, 64, 67, 71]);
+  const slash = voiceScore(measure("1", `${harmony("G", "major", { bass: "B" })}${note("G", 4)}`));
+  assert.deepEqual(blockChordMidis(slash.parts[0].measures[0].harmonies[0]), [59, 67, 71, 74]);
+  const events = preparePlayback(score, null).events.filter((event) => event.channel === "P" && event.midi === 71);
+  assert.equal(events[0].ql, 1);
+  assert.equal(events[0].durQl, 1);
+  assert.equal(events.some((event) => event.ql === 0), false);
+  const withPiano = parseScore(`<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list>
+    <score-part id="P1"><part-name>Voice</part-name></score-part>
+    <score-part id="P2"><part-name>Piano</part-name></score-part>
+  </part-list>
+  <part id="P1">${measure("1", `${harmony("G", "major")}${note("C", 4)}`)}</part>
+  <part id="P2">${measure("1", note("F", 3))}</part>
+</score-partwise>`);
+  const played = preparePlayback(withPiano, null).events.filter((event) => event.channel === "P");
+  assert.deepEqual(played.map((event) => event.midi), [53]);
+});
+
+test("a separate piano file lines up by measure number", () => {
+  const vocal = voiceScore(`${measure("1", note("C", 4, { dur: 4, type: "whole" }))}${measure("2", note("D", 4, { dur: 4, type: "whole" }))}`);
+  const pianoScore = parseScore(`<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    ${measure("9", note("D", 5))}
+    ${measure("2", note("C", 4))}
+  </part>
+</score-partwise>`);
+  const piano = pianoScore.parts.find((part) => part.role === "piano");
+  const events = alignPianoEvents(vocal, piano);
+  assert.deepEqual(events.map((event) => [event.ql, event.midi]), [[4, 60]]);
+  const prepared = preparePlayback(vocal, piano).events.filter((event) => event.channel === "P");
+  assert.deepEqual(prepared.map((event) => event.midi), [60]);
+});
+
+test("a MuseScore bass note tagged base is the slash bass", () => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<museScore version="4.00"><Score>
+  <Part id="1"><Staff id="1"><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff><trackName>Vocals</trackName><Instrument id="voice"><instrumentId>voice.ensemble</instrumentId></Instrument></Part>
+  <Staff id="1"><Measure><voice>
+    <Harmony><root>15</root><base>19</base></Harmony>
+    <Chord><durationType>quarter</durationType><Note><pitch>67</pitch><tpc>15</tpc></Note></Chord>
+  </voice></Measure></Staff>
+</Score></museScore>`;
+  const score = openMscz(zipSync({ "score.mscx": new TextEncoder().encode(xml) }));
+  const harmony = score.parts[0].measures[0].harmonies[0];
+  assert.equal(harmony.text, "G/B");
+  assert.deepEqual(blockChordMidis(harmony), [59, 67, 71, 74]);
+});

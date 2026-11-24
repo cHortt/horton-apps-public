@@ -89,6 +89,10 @@ def main(argv):
         path = f if os.path.isabs(f) else os.path.join(ROOT, f)
         rel = os.path.relpath(path, ROOT)
         if not os.path.isfile(path) or rel.startswith('.git/'): continue
+        # Vocal rehearsal samples are audio, not documents. The path allowlist
+        # already limits which of these files can be tracked.
+        if rel.startswith('vocal/samples/') and (rel.endswith('.wav') or rel.endswith('.mp3')):
+            continue
         try: raw = open(path, encoding='utf-8').read()
         except UnicodeDecodeError:
             blob = open(path, 'rb').read()

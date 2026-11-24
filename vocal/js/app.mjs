@@ -10,16 +10,17 @@ import {
   snapshotScore,
   vocalPart,
 } from "./edit.mjs";
+import { mixState } from "./mix.mjs";
 import { exportMscz, openMscz } from "./mscz.mjs";
-import { MXL_ERROR, NO_STAFF_ERROR, editedName, exportScore, findNote, iterNotes, onsetKey, parseScore, playbackEvents, rejectOpenedFile, setPitch } from "./musicxml.mjs";
+import { MXL_ERROR, NO_STAFF_ERROR, audioQlFromWritten, editedName, exportScore, findNote, iterNotes, onsetKey, parseScore, rejectOpenedFile, setPitch, writtenQlFromAudio } from "./musicxml.mjs";
+import { preparePlayback } from "./playback.mjs";
 import { PART_COLORS, renderScore, xForQl } from "./render.mjs";
-import { chromaticMove, defaultMix, diatonicMove, samePitch, spellPretty } from "./theory.mjs";
+import { chromaticMove, diatonicMove, samePitch, spellPretty } from "./theory.mjs";
 import { isZip, readZip } from "./zip.mjs";
 
 const PART_NAMES = { S: "Soprano", A: "Alto", T: "Tenor", B: "Bass", P: "Piano" };
 const SINGLE_NAMES = { S: "Melody", A: "High", T: "Low", B: "Bass", P: "Piano" };
 const SINGLE_SHORT = { S: "Mel", A: "High", T: "Low", B: "Bass" };
-const CHANNELS = ["S", "A", "T", "B", "P"];
 
 const els = {
   example: document.querySelector("#example"),
@@ -34,8 +35,8 @@ const els = {
   chooserList: document.querySelector("#chooser-list"),
   readout: document.querySelector("#readout"),
   play: document.querySelector("#play"),
-  mixerBtn: document.querySelector("#mixer-btn"),
-  mixer: document.querySelector("#mixer"),
+  mix: document.querySelector("#mix"),
+  piano: document.querySelector("#piano-file"),
   changes: document.querySelector("#changes"),
   undo: document.querySelector("#undo"),
   redo: document.querySelector("#redo"),
@@ -64,8 +65,12 @@ const state = {
   showChanges: false,
   playMeasure: 0,
   bpm: 68,
-  gains: defaultMix("S"),
-  mutes: { S: false, A: false, T: false, B: false, P: false },
+  mixId: "all",
+  gains: mixState("all").gains,
+  mutes: mixState("all").mutes,
+  pianoPart: null,
+  pianoName: "",
+  arming: false,
   undo: [],
   redo: [],
   scope: "chord",
@@ -105,11 +110,15 @@ function acceptScore(score, filename) {
   state.barAnchor = null;
   state.barStart = 0;
   state.barEnd = 0;
+  state.pianoPart = null;
+  state.pianoName = "";
+  state.mixId = "all";
+  if (els.mix) els.mix.value = "all";
+  applyMix(false);
   els.tempo.value = String(Math.max(40, Math.min(160, state.bpm)));
   els.bpm.textContent = els.tempo.value;
   state.bpm = Number(els.tempo.value);
-  applyDefaultMix(false);
-  els.label.textContent = filename;
+  els.label.textContent = fileLabelText();
   els.empty.hidden = true;
   els.export.disabled = false;
   render();
@@ -233,6 +242,24 @@ function selectionChords() {
   return [chordMates(found.measure, found.note)];
 }
 
+function fileLabelText() {
+  if (!state.filename && state.pianoName) return state.pianoName;
+  if (!state.filename) return "No file loaded";
+  if (state.pianoName) return `${state.filename} + ${state.pianoName}`;
+  return state.filename;
+}
+
+function currentMix() {
+  return { gains: state.gains, mutes: state.mutes };
+}
+
+function applyMix(pushEngine = true) {
+  const mix = mixState(state.mixId);
+  state.gains = mix.gains;
+  state.mutes = mix.mutes;
+  if (pushEngine && state.engine) state.engine.setMix(mix);
+}
+
 function refreshControls() {
   const selected = state.selectedId ? findNote(state.score, state.selectedId) : null;
   const names = nameMap();
@@ -248,12 +275,6 @@ function refreshControls() {
     button.style.color = on ? "#fff" : PART_COLORS[button.dataset.part];
     button.style.borderColor = PART_COLORS[button.dataset.part];
   }
-  document.querySelectorAll("#mixer .chan").forEach((row, index) => {
-    const channel = ["S", "A", "T", "B", "P"][index];
-    const span = row.querySelector("span");
-    if (span && channel) span.textContent = names[channel];
-    row.hidden = channel === "B" && hideBass;
-  });
   const size = vocalPart(state.score)?.convention === "size";
   const chords = selectionChords();
   const busy = !!state.transport;
@@ -294,9 +315,8 @@ function refreshControls() {
   els.undo.disabled = !state.undo.length || !!state.transport;
   els.redo.disabled = !state.redo.length || !!state.transport;
   els.changes.setAttribute("aria-pressed", state.showChanges ? "true" : "false");
-  els.play.disabled = !state.score;
-  els.play.textContent = state.transport ? "Stop" : "Play";
-  els.mixerBtn.setAttribute("aria-expanded", els.mixer.hidden ? "false" : "true");
+  els.play.disabled = !state.score || state.arming;
+  els.play.textContent = state.transport ? "Stop" : state.arming ? "Loading" : "Play";
   if (!selected?.note.pitch) {
     const bar = state.score ? state.score.parts[0].measures[state.playMeasure]?.number : "";
     const where = state.scope === "bars" && state.barStart !== state.barEnd ? `bars ${Math.min(state.barStart, state.barEnd) + 1}–${Math.max(state.barStart, state.barEnd) + 1}` : `play from bar ${bar}`;
@@ -315,19 +335,6 @@ function refreshControls() {
     : `${who} bar ${bar} · ${now}${unison}${unsure}`;
 }
 
-function applyDefaultMix(refreshSliders = true) {
-  state.gains = defaultMix(state.activePart);
-  state.mutes = { S: false, A: false, T: false, B: false, P: false };
-  if (!refreshSliders) return;
-  for (const channel of CHANNELS) {
-    const slider = document.querySelector(`input[data-gain="${channel}"]`);
-    const mute = document.querySelector(`button[data-mute="${channel}"]`);
-    slider.value = String(Math.round(state.gains[channel] * 100));
-    mute.setAttribute("aria-pressed", "false");
-    mute.classList.remove("on");
-  }
-}
-
 function selectPart(part) {
   if (state.activePart === part) return;
   state.activePart = part;
@@ -337,7 +344,6 @@ function selectPart(part) {
     const next = mates.find((note) => note.parts.includes(part));
     state.selectedId = next ? next.id : selected.note.parts.includes(part) ? selected.note.id : null;
   }
-  applyDefaultMix(true);
   if (state.score) render();
   else refreshControls();
 }
@@ -456,27 +462,46 @@ function togglePlay() {
     stopPlayback();
     return;
   }
-  if (!state.score) return;
+  if (!state.score || state.arming) return;
   if (!state.engine) state.engine = createEngine();
-  state.engine.resume().then(() => {
-    const from = state.layout.measures[state.playMeasure]?.startQl ?? 0;
-    const events = playbackEvents(state.score);
-    state.transport = startTransport({
-      engine: state.engine,
-      events,
-      fromQl: from,
-      endQl: state.layout.endQl,
-      quarterBpm: state.bpm,
-      getMix: () => ({ gains: state.gains, mutes: state.mutes }),
-      onFrame: (ql) => moveCursor(ql),
-      onEnd: () => {
-        state.transport = null;
-        moveCursor(null);
+  const mix = mixState(state.mixId);
+  state.gains = mix.gains;
+  state.mutes = mix.mutes;
+  state.arming = true;
+  refreshControls();
+  const unlocked = state.engine.resume();
+  unlocked
+    .then(() => state.engine.loadMix(mix))
+    .then(() => {
+      state.arming = false;
+      if (!state.score) {
         refreshControls();
-      },
+        return;
+      }
+      const prepared = preparePlayback(state.score, state.pianoPart);
+      const written = state.layout?.measures[state.playMeasure]?.startQl ?? 0;
+      state.engine.setMix(mix);
+      state.transport = startTransport({
+        engine: state.engine,
+        getEvents: () => preparePlayback(state.score, state.pianoPart).events,
+        fromQl: audioQlFromWritten(prepared.visits, written),
+        endQl: prepared.endQl,
+        quarterBpm: state.bpm,
+        getMix: currentMix,
+        onFrame: (ql) => moveCursor(writtenQlFromAudio(prepared.visits, ql)),
+        onEnd: () => {
+          state.transport = null;
+          moveCursor(null);
+          refreshControls();
+        },
+      });
+      refreshControls();
+    })
+    .catch((error) => {
+      state.arming = false;
+      showError(error?.message || "Could not load the instrument sounds.");
+      refreshControls();
     });
-    refreshControls();
-  });
 }
 
 function stopPlayback() {
@@ -552,6 +577,39 @@ els.file.addEventListener("change", () => {
   reader.readAsArrayBuffer(file);
 });
 
+function loadPianoBytes(bytes, filename) {
+  let score;
+  try {
+    if (/\.mscz$/i.test(filename) || (isZip(bytes) && zipHasMscx(bytes))) {
+      score = openMscz(bytes);
+    } else {
+      const xml = new TextDecoder("utf-8").decode(bytes);
+      const rejected = rejectOpenedFile(filename, xml);
+      if (rejected) {
+        showError(rejected);
+        return;
+      }
+      score = parseScore(xml);
+    }
+  } catch (error) {
+    showError(error.message || "Could not read that piano file.");
+    return;
+  }
+  if (!score || score.needsStaffChoice) {
+    showError("That file has no piano part.");
+    return;
+  }
+  const piano = score.parts.find((part) => part.role === "piano");
+  if (!piano) {
+    showError("That file has no piano part.");
+    return;
+  }
+  state.pianoPart = piano;
+  state.pianoName = filename;
+  showError("");
+  els.label.textContent = fileLabelText();
+}
+
 function zipHasMscx(bytes) {
   try {
     return readZip(bytes).some((entry) => /\.mscx$/i.test(entry.name));
@@ -618,9 +676,23 @@ els.changes.addEventListener("click", () => {
   if (state.score) render();
   else refreshControls();
 });
-els.mixerBtn.addEventListener("click", () => {
-  els.mixer.hidden = !els.mixer.hidden;
-  refreshControls();
+els.mix.addEventListener("change", () => {
+  state.mixId = els.mix.value;
+  applyMix(true);
+  if (!state.engine) return;
+  const mix = mixState(state.mixId);
+  state.engine.loadMix(mix).then(() => state.engine?.setMix(mixState(state.mixId))).catch((error) => {
+    showError(error?.message || "Could not load the instrument sounds.");
+  });
+});
+els.piano.addEventListener("change", () => {
+  const file = els.piano.files?.[0];
+  els.piano.value = "";
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => loadPianoBytes(new Uint8Array(reader.result || new ArrayBuffer(0)), file.name);
+  reader.onerror = () => showError("Could not read that piano file.");
+  reader.readAsArrayBuffer(file);
 });
 els.tempo.addEventListener("input", () => {
   state.bpm = Number(els.tempo.value);
@@ -628,19 +700,6 @@ els.tempo.addEventListener("input", () => {
 });
 for (const button of document.querySelectorAll("[data-part]")) {
   button.addEventListener("click", () => selectPart(button.dataset.part));
-}
-for (const slider of document.querySelectorAll("[data-gain]")) {
-  slider.addEventListener("input", () => {
-    state.gains[slider.dataset.gain] = Number(slider.value) / 100;
-  });
-}
-for (const button of document.querySelectorAll("[data-mute]")) {
-  button.addEventListener("click", () => {
-    const channel = button.dataset.mute;
-    state.mutes[channel] = !state.mutes[channel];
-    button.setAttribute("aria-pressed", state.mutes[channel] ? "true" : "false");
-    button.classList.toggle("on", state.mutes[channel]);
-  });
 }
 
 els.scroll.addEventListener("pointerdown", (event) => {
@@ -660,7 +719,7 @@ els.scroll.addEventListener("pointercancel", () => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (!state.score || event.target.matches("input, textarea")) return;
+  if (!state.score || event.target.matches("input, textarea, select")) return;
   if (event.key === "ArrowUp") {
     event.preventDefault();
     edit("up");
@@ -690,5 +749,5 @@ if (document.fonts?.ready) {
   });
 }
 
-applyDefaultMix(true);
+applyMix(false);
 refreshControls();

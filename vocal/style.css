@@ -29,7 +29,7 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 button, input, label { font: inherit; color: inherit; }
-button, label#open {
+button, label#open, label#piano-open {
   min-height: 44px;
   min-width: 44px;
   padding: 0 12px;
@@ -39,7 +39,7 @@ button, label#open {
   font-weight: 700;
   touch-action: manipulation;
 }
-label#open {
+label#open, label#piano-open {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -59,6 +59,29 @@ label#open {
   opacity: 0;
   font-size: 16px;
   cursor: pointer;
+}
+#piano-file {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  font-size: 16px;
+  cursor: pointer;
+}
+.mixpick { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; }
+.mixpick select {
+  min-height: 44px;
+  max-width: 9.5rem;
+  font-size: 16px;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 0 6px;
 }
 button:disabled { opacity: 0.4; }
 button:focus-visible, input:focus-visible { outline: 3px solid #8eb4f0; outline-offset: 1px; }
@@ -115,20 +138,6 @@ h1 { margin: 0; font-size: 18px; }
 }
 #empty { max-width: 36rem; margin: 0; padding: 20px 16px; color: var(--ink); }
 #empty p { margin: 0 0 10px; }
-#mixer {
-  background: #fff;
-  border-top: 1px solid var(--line);
-  padding: 6px 10px 2px;
-}
-#mixer:not([hidden]) {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 2px;
-}
-.chan { display: grid; grid-template-columns: 5.4rem 1fr auto; gap: 8px; align-items: center; min-height: 44px; }
-.chan span { font-weight: 700; font-size: 14px; }
-.chan input[type="range"] { width: 100%; height: 44px; }
-.mute.on { background: #1f2933; color: #fff; border-color: #1f2933; }
 .bar {
   background: var(--bar);
   border-top: 1px solid var(--line);
@@ -174,15 +183,6 @@ h1 { margin: 0; font-size: 18px; }
   header { padding: 4px 8px; }
   h1 { font-size: 16px; }
   #filelabel { flex: 1 1 auto; }
-  #mixer:not([hidden]) { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding-bottom: 4px; }
-  .chan { grid-template-columns: 1fr auto; grid-template-rows: auto auto; }
-  .chan span { grid-column: 1; }
-  .chan input { grid-column: 1 / -1; height: 32px; }
-  .chan .mute, .chan button { grid-column: 2; grid-row: 1; min-height: 36px; padding: 0 8px; }
   .bar { padding-top: 2px; padding-bottom: calc(4px + env(safe-area-inset-bottom)); }
   #readout { font-size: 13px; }
-}
-@media (min-width: 900px) {
-  #mixer:not([hidden]) { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-  .chan { grid-template-columns: auto 1fr auto; }
 }
