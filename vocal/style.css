@@ -140,18 +140,66 @@ button:focus-visible, input:focus-visible { outline: 3px solid #8eb4f0; outline-
 .drawer .help { margin: 10px 4px 0; color: var(--muted); font-size: 13px; font-weight: 600; }
 .sections { margin: 2px 0 6px; }
 .sections button { flex: 1; }
-.mixpick { display: flex; align-items: center; gap: 8px; margin: 8px 4px; font-size: 14px; font-weight: 700; }
-.mixpick select {
-  flex: 1;
+#panel-mix { overflow-x: hidden; max-width: 100%; }
+#mix-sliders { display: flex; flex-direction: column; gap: 2px; }
+.mixrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 4px;
   min-height: 44px;
-  min-width: 0;
-  font-size: 16px;
+  max-width: 100%;
+  font-size: 14px;
   font-weight: 700;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fff;
-  padding: 0 8px;
 }
+.mixrow .mixname { flex: 0 1 5.6rem; min-width: 0; line-height: 1.1; }
+.mixrow .mixdb {
+  flex: 0 0 3.7rem;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.mixrow input[type="range"] {
+  flex: 1 1 auto;
+  width: 0;
+  min-width: 0;
+  height: 44px;
+  margin: 0;
+  touch-action: none;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+.mixrow input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  background: var(--line);
+  border-radius: 3px;
+}
+.mixrow input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  margin-top: -11px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--ink);
+}
+.mixrow input[type="range"]::-moz-range-track {
+  height: 6px;
+  background: var(--line);
+  border: 0;
+  border-radius: 3px;
+}
+.mixrow input[type="range"]::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--ink);
+}
+#mix-reset { display: block; width: calc(100% - 8px); margin: 4px 4px 2px; }
 .tempo { display: flex; align-items: center; gap: 8px; margin: 8px 4px; font-size: 14px; font-weight: 700; }
 .tempo input { flex: 1; height: 44px; min-width: 0; }
 #bpm { min-width: 2ch; }

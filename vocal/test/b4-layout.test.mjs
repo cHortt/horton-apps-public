@@ -97,7 +97,7 @@ async function armUndo(page) {
   await page.waitForFunction(() => document.querySelector("#readout")?.textContent === "High · bar 2 · A4");
 }
 
-test("B4 chrome matches the mock and the staff wraps onto the same systems", { timeout: 120000 }, async () => {
+test("B4 chrome matches the mock and the staff wraps onto the same systems", { timeout: 180000 }, async () => {
   const server = await serve();
   const origin = `http://127.0.0.1:${server.address().port}`;
   const browser = await chromium.launch();
@@ -107,8 +107,11 @@ test("B4 chrome matches the mock and the staff wraps onto the same systems", { t
       ["iphone-portrait", "selected"],
       ["iphone-portrait", "none"],
       ["iphone-portrait", "more"],
+      ["iphone-portrait", "mix"],
       ["iphone-landscape", "selected"],
+      ["iphone-landscape", "mix"],
       ["ipad-landscape", "selected"],
+      ["ipad-landscape", "mix"],
     ]) {
       const context = await browser.newContext(devices[dev]);
       const page = await context.newPage();
@@ -123,10 +126,48 @@ test("B4 chrome matches the mock and the staff wraps onto the same systems", { t
         }
         await page.waitForFunction(() => document.querySelector("#play-from-label").textContent === "Play from 1");
       }
-      if (state === "more") {
+      if (state === "more" || state === "mix") {
         await page.locator("#more").click();
         await page.waitForSelector("#drawer:not([hidden])");
         await page.waitForFunction(() => document.querySelector("#drawer-heading").textContent === "High · bar 2");
+      }
+      if (state === "mix") {
+        await page.locator("#tab-mix").click();
+        await page.waitForSelector("#panel-mix:not([hidden])");
+        await page.waitForFunction(() => document.querySelectorAll("#mix-sliders input").length === 4);
+        const mixUi = await page.evaluate(() => {
+          const sliders = [...document.querySelectorAll("#mix-sliders .mixrow")].map((row) => ({
+            channel: row.querySelector("input").dataset.channel,
+            name: row.querySelector(".mixname").textContent,
+            db: row.querySelector(".mixdb").textContent,
+          }));
+          const tabs = Object.fromEntries(
+            [...document.querySelectorAll("[data-part]")].map((button) => [button.dataset.part, button.getAttribute("aria-label")]),
+          );
+          const drawer = document.getElementById("drawer");
+          const panel = document.getElementById("panel-mix");
+          const rowOverflow = [...document.querySelectorAll("#panel-mix .mixrow")].some((row) => row.scrollWidth > row.clientWidth + 1);
+          return {
+            sliders,
+            tabs,
+            bass: document.querySelector('#mix-sliders input[data-channel="B"]') != null,
+            preset: document.querySelector("select#mix") != null,
+            drawerOverflow: drawer.scrollWidth - drawer.clientWidth,
+            panelOverflow: panel.scrollWidth - panel.clientWidth,
+            rowOverflow,
+          };
+        });
+        assert.equal(mixUi.preset, false, `${dev} mix preset select`);
+        assert.equal(mixUi.bass, false, `${dev} bass slider without a bass part`);
+        assert.deepEqual(mixUi.sliders.map((slider) => slider.channel), ["S", "A", "T", "P"]);
+        assert.deepEqual(mixUi.sliders.map((slider) => slider.db), ["0 dB", "0 dB", "0 dB", "-6 dB"]);
+        for (const slider of mixUi.sliders) {
+          if (slider.channel === "P") continue;
+          assert.equal(slider.name, mixUi.tabs[slider.channel], `${dev} ${slider.channel} label`);
+        }
+        assert.ok(mixUi.drawerOverflow <= 1, `${dev} mix drawer overflow ${mixUi.drawerOverflow}`);
+        assert.ok(mixUi.panelOverflow <= 1, `${dev} mix panel overflow ${mixUi.panelOverflow}`);
+        assert.equal(mixUi.rowOverflow, false, `${dev} mix row overflow`);
       }
       const mask = await page.evaluate(() => {
         const box = (el) => {
@@ -140,7 +181,7 @@ test("B4 chrome matches the mock and the staff wraps onto the same systems", { t
           return { first: Number(system.dataset.first), last: Number(system.dataset.last), top: r.top, bottom: r.bottom };
         });
         const visible = systems.filter((system) => system.bottom > staff.top + 1 && system.top < staff.bottom - 1);
-        const small = [...document.querySelectorAll("button, a.home")].filter((el) => {
+        const small = [...document.querySelectorAll("button, a.home, input[type=range]")].filter((el) => {
           const r = el.getBoundingClientRect();
           const st = getComputedStyle(el);
           if (r.width === 0 || r.height === 0 || st.visibility === "hidden" || el.closest("[hidden]")) return false;
@@ -157,21 +198,53 @@ test("B4 chrome matches the mock and the staff wraps onto the same systems", { t
           small,
         };
       });
-      const live = PNG.sync.read(await page.screenshot());
-      const ref = PNG.sync.read(readFileSync(new URL(`b4-${dev}-${state}.png`, import.meta.url)));
-      assert.equal(live.width, ref.width, `${dev} ${state} width`);
-      assert.equal(live.height, ref.height, `${dev} ${state} height`);
-      const match = chromeMatch(live, ref, mask);
+      const livePng = await page.screenshot();
+      const live = PNG.sync.read(livePng);
       const expect = structure[dev];
-      report.push({ dev, state, chrome: Number((match.ratio * 100).toFixed(2)), staffPct: Number((mask.staffPct * 100).toFixed(1)), systems: mask.systems, visible: mask.visible, measures: mask.measures });
-      // References are a same-browser render of the B4 mock source, so font
-      // rasterization matches this Playwright Chromium. Every screen must clear 97%.
-      if (match.ratio < 0.97) writeFileSync(`/tmp/b4-diff-${dev}-${state}.png`, PNG.sync.write(match.diff));
-      assert.ok(match.ratio >= 0.97, `${dev} ${state} chrome match ${(match.ratio * 100).toFixed(2)}% (${match.mismatched} px)`);
+      // The Mix panel is new chrome, so portrait and iPad keep their own
+      // references. Landscape Mix is checked for fit, not pixels.
+      const pixel = !(dev === "iphone-landscape" && state === "mix");
+      let chrome = null;
+      if (pixel) {
+        const ref = PNG.sync.read(readFileSync(new URL(`b4-${dev}-${state}.png`, import.meta.url)));
+        assert.equal(live.width, ref.width, `${dev} ${state} width`);
+        assert.equal(live.height, ref.height, `${dev} ${state} height`);
+        const match = chromeMatch(live, ref, mask);
+        chrome = Number((match.ratio * 100).toFixed(2));
+        // References are a same-browser render, so font rasterization matches
+        // this Playwright Chromium. Every compared screen must clear 97%.
+        if (match.ratio < 0.97) writeFileSync(`/tmp/b4-diff-${dev}-${state}.png`, PNG.sync.write(match.diff));
+        assert.ok(match.ratio >= 0.97, `${dev} ${state} chrome match ${(match.ratio * 100).toFixed(2)}% (${match.mismatched} px)`);
+      }
+      report.push({ dev, state, chrome, staffPct: Number((mask.staffPct * 100).toFixed(1)), systems: mask.systems, visible: mask.visible, measures: mask.measures });
       assert.equal(mask.systems, expect.systems, `${dev} system count`);
       assert.ok(Math.abs(mask.visible - expect.visible) <= 1, `${dev} visible systems ${mask.visible}`);
       assert.ok(Math.abs(mask.staffPct - expect.staffPct) < 0.03, `${dev} staff ${(mask.staffPct * 100).toFixed(1)}%`);
       assert.deepEqual(mask.small, [], `${dev} ${state} tap targets under 44px`);
+      if (dev === "iphone-portrait" && state === "mix") {
+        await page.locator('#mix-sliders input[data-channel="A"]').evaluate((el) => {
+          el.value = "0";
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        await page.waitForFunction(() => document.querySelector('#mix-sliders input[data-channel="A"]')?.getAttribute("aria-valuetext") === "Off");
+        assert.deepEqual(await page.locator("#mix-sliders .mixdb").allTextContents(), ["0 dB", "Off", "0 dB", "-6 dB"]);
+        await page.keyboard.press("Escape");
+        await page.locator('[data-part="T"]').click();
+        await page.locator("#more").click();
+        await page.locator("#tab-mix").click();
+        assert.deepEqual(await page.locator("#mix-sliders .mixdb").allTextContents(), ["0 dB", "Off", "0 dB", "-6 dB"]);
+        await page.setInputFiles("#file", fixture);
+        await page.waitForFunction(() => document.querySelector("#readout").hidden && document.querySelector("#song-title")?.textContent === "Song title");
+        assert.deepEqual(await page.locator("#mix-sliders .mixdb").allTextContents(), ["0 dB", "Off", "0 dB", "-6 dB"]);
+        await page.reload({ waitUntil: "load" });
+        await loadSong(page);
+        await page.locator("#more").click();
+        await page.locator("#tab-mix").click();
+        await page.waitForFunction(() => document.querySelectorAll("#mix-sliders input").length === 4);
+        assert.deepEqual(await page.locator("#mix-sliders .mixdb").allTextContents(), ["0 dB", "Off", "0 dB", "-6 dB"]);
+        await page.locator("#mix-reset").click();
+        assert.deepEqual(await page.locator("#mix-sliders .mixdb").allTextContents(), ["0 dB", "0 dB", "0 dB", "-6 dB"]);
+      }
       await context.close();
     }
   } finally {

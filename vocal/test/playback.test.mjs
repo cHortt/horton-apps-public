@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { zipSync } from "../js/fflate.mjs";
-import { mixState } from "../js/mix.mjs";
+import { createMix } from "../js/mix.mjs";
 import { openMscz } from "../js/mscz.mjs";
 import { parseScore, playbackEvents, playbackTimeline, setPitch } from "../js/musicxml.mjs";
 import { alignPianoEvents, blockChordMidis, preparePlayback } from "../js/playback.mjs";
 import { renderVoiceTone } from "../js/voice.mjs";
 import { dbToGain } from "../js/theory.mjs";
+import { createEngine, startTransport } from "../js/audio.mjs";
 
 function voiceScore(measures, name = "Voice") {
   return parseScore(`<?xml version="1.0" encoding="UTF-8"?>
@@ -38,27 +39,107 @@ function harmony(step, kind, { bass = "", alter = "", bassAlter = "", degrees = 
   return `<harmony><root><root-step>${step}</root-step>${rootAlter}</root><kind>${kind}</kind>${bassXml}${degrees}</harmony>`;
 }
 
-test("rehearsal mixes keep melody and piano aligned between High and Low", () => {
-  const all = mixState("all");
-  const melody = mixState("melody");
-  const high = mixState("high");
-  const low = mixState("low");
-  for (const channel of ["S", "A", "T", "B"]) assert.equal(all.gains[channel], 1);
-  assert.ok(Math.abs(all.gains.P - dbToGain(-6)) < 1e-12);
-  assert.equal(melody.mutes.A, true);
-  assert.equal(melody.mutes.T, true);
-  assert.equal(melody.gains.S, 1);
-  assert.equal(high.gains.A, 1);
-  assert.ok(Math.abs(high.gains.S - dbToGain(-12)) < 1e-12);
-  assert.equal(high.mutes.T, true);
-  assert.equal(low.gains.S, high.gains.S);
-  assert.equal(low.gains.P, high.gains.P);
-  assert.equal(low.mutes.A, true);
-  assert.equal(high.mutes.B, true);
-  assert.equal(low.mutes.B, true);
-  assert.equal(low.gains.T, 1);
-  assert.equal(low.gains.T, high.gains.A);
-  assert.ok(Math.abs(melody.gains.P - dbToGain(-6)) < 1e-12);
+function memoryStorage() {
+  const data = new Map();
+  return {
+    getItem(key) {
+      return data.has(key) ? data.get(key) : null;
+    },
+    setItem(key, value) {
+      data.set(key, String(value));
+    },
+  };
+}
+
+function fakeContext() {
+  const created = [];
+  const param = (value) => ({
+    value,
+    cancelScheduledValues() {},
+    setValueAtTime(next) {
+      this.value = next;
+    },
+    linearRampToValueAtTime(next) {
+      this.value = next;
+    },
+    exponentialRampToValueAtTime(next) {
+      this.value = next;
+    },
+  });
+  const node = () => ({
+    gain: param(1),
+    connect() {},
+    start() {},
+    stop() {},
+    threshold: param(0),
+    knee: param(0),
+    ratio: param(0),
+    attack: param(0),
+    release: param(0),
+    frequency: param(440),
+  });
+  return {
+    created,
+    ctx: {
+      currentTime: 0,
+      sampleRate: 44100,
+      destination: node(),
+      state: "running",
+      createGain() {
+        const gain = node();
+        created.push(gain);
+        return gain;
+      },
+      createDynamicsCompressor: () => node(),
+    },
+  };
+}
+
+test("a slider change during playback updates the gain of that channel only", async () => {
+  const { ctx, created } = fakeContext();
+  const engine = createEngine(ctx);
+  const mix = createMix(memoryStorage());
+  let ended = 0;
+  let stopped = 0;
+  const stopAll = engine.stopAll;
+  engine.stopAll = () => {
+    stopped += 1;
+    stopAll();
+  };
+  const transport = startTransport({
+    engine,
+    getEvents: () => [],
+    fromQl: 0,
+    endQl: 64,
+    quarterBpm: 60,
+    getMix: () => mix.playback(),
+    onFrame() {},
+    onEnd() {
+      ended += 1;
+    },
+  });
+  try {
+    const buses = created.slice(1, 6);
+    assert.equal(buses.length, 5);
+    const gain = () => Object.fromEntries(["S", "A", "T", "B", "P"].map((channel, index) => [channel, buses[index].gain.value]));
+    const before = gain();
+    assert.equal(before.S, 1);
+    assert.equal(before.A, 1);
+    assert.ok(Math.abs(before.P - dbToGain(-6)) < 1e-12);
+    mix.set("A", 6);
+    const deadline = Date.now() + 1000;
+    let after = gain();
+    while (Math.abs(after.A - dbToGain(6)) > 1e-9 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      after = gain();
+    }
+    assert.ok(Math.abs(after.A - dbToGain(6)) < 1e-12);
+    for (const channel of ["S", "T", "B", "P"]) assert.equal(after[channel], before[channel]);
+    assert.equal(ended, 0);
+    assert.equal(stopped, 0);
+  } finally {
+    transport.stop();
+  }
 });
 
 const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];

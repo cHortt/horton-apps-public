@@ -10,7 +10,7 @@ import {
   snapshotScore,
   vocalPart,
 } from "./edit.mjs";
-import { mixState } from "./mix.mjs";
+import { channelLabel, channelsForScore, createMix, dbToSlider, formatLevel, sliderToDb, SLIDER_MAX } from "./mix.mjs";
 import { exportMscz, openMscz } from "./mscz.mjs";
 import { MXL_ERROR, NO_STAFF_ERROR, audioQlFromWritten, editedName, exportScore, findNote, iterNotes, onsetKey, parseScore, rejectOpenedFile, setPitch, writtenQlFromAudio } from "./musicxml.mjs";
 import { preparePlayback } from "./playback.mjs";
@@ -40,7 +40,8 @@ const els = {
   chooserList: document.querySelector("#chooser-list"),
   readout: document.querySelector("#readout"),
   play: document.querySelector("#play"),
-  mix: document.querySelector("#mix"),
+  mixSliders: document.querySelector("#mix-sliders"),
+  mixReset: document.querySelector("#mix-reset"),
   piano: document.querySelector("#piano-file"),
   playIcon: document.querySelector("#play-icon"),
   playFrom: document.querySelector("#play-from"),
@@ -83,9 +84,6 @@ const state = {
   showChanges: false,
   playMeasure: 0,
   bpm: 68,
-  mixId: "all",
-  gains: mixState("all").gains,
-  mutes: mixState("all").mutes,
   pianoPart: null,
   pianoName: "",
   arming: false,
@@ -102,6 +100,7 @@ const state = {
 };
 
 let tap = null;
+const mix = createMix(localStorage);
 
 function showError(message) {
   els.error.hidden = !message;
@@ -131,9 +130,7 @@ function acceptScore(score, filename) {
   state.barEnd = 0;
   state.pianoPart = null;
   state.pianoName = "";
-  state.mixId = "all";
-  if (els.mix) els.mix.value = "all";
-  applyMix(false);
+  mix.openFile();
   els.tempo.value = String(Math.max(40, Math.min(160, state.bpm)));
   els.bpm.textContent = els.tempo.value;
   state.bpm = Number(els.tempo.value);
@@ -272,14 +269,72 @@ function fileLabelText() {
 }
 
 function currentMix() {
-  return { gains: state.gains, mutes: state.mutes };
+  return mix.playback();
 }
 
-function applyMix(pushEngine = true) {
-  const mix = mixState(state.mixId);
-  state.gains = mix.gains;
-  state.mutes = mix.mutes;
-  if (pushEngine && state.engine) state.engine.setMix(mix);
+function renderMixSliders() {
+  const names = nameMap();
+  const channels = channelsForScore(state.score);
+  const levels = mix.levels();
+  const host = els.mixSliders;
+  const key = channels.join("");
+  if (host.dataset.channels !== key) {
+    host.dataset.channels = key;
+    host.replaceChildren();
+    for (const channel of channels) {
+      const row = document.createElement("label");
+      row.className = "mixrow";
+      const name = document.createElement("span");
+      name.className = "mixname";
+      const input = document.createElement("input");
+      input.type = "range";
+      input.min = "0";
+      input.max = String(SLIDER_MAX);
+      input.step = "1";
+      input.dataset.channel = channel;
+      const readout = document.createElement("span");
+      readout.className = "mixdb";
+      row.append(name, input, readout);
+      host.append(row);
+    }
+  }
+  for (const input of host.querySelectorAll("input[data-channel]")) {
+    const channel = input.dataset.channel;
+    const label = channelLabel(names, channel);
+    const text = formatLevel(levels[channel]);
+    input.parentElement.querySelector(".mixname").textContent = label;
+    input.setAttribute("aria-label", label);
+    input.setAttribute("aria-valuetext", text);
+    if (document.activeElement !== input) input.value = String(dbToSlider(levels[channel]));
+    input.parentElement.querySelector(".mixdb").textContent = text;
+  }
+}
+
+function pushMix(playback) {
+  if (!state.engine) return;
+  state.engine.setMix(playback);
+  if (playback.mutes.P || !(playback.gains.P > 0)) return;
+  state.engine.loadMix(playback).then(() => state.engine?.setMix(mix.playback())).catch((error) => {
+    showError(error?.message || "Could not load the instrument sounds.");
+  });
+}
+
+function onMixInput(event) {
+  const input = event.target;
+  const channel = input?.dataset?.channel;
+  if (!channel) return;
+  const db = sliderToDb(input.value);
+  const playback = mix.set(channel, db);
+  const text = formatLevel(db);
+  input.setAttribute("aria-valuetext", text);
+  const readout = input.parentElement?.querySelector(".mixdb");
+  if (readout) readout.textContent = text;
+  pushMix(playback);
+}
+
+function resetMix() {
+  pushMix(mix.reset());
+  renderMixSliders();
 }
 
 function refreshControls() {
@@ -353,7 +408,7 @@ function refreshControls() {
   const barNo = staff?.measures[state.playMeasure]?.number || "1";
   els.playFromLabel.textContent = state.arming ? "Loading" : playing ? "Stop" : `Play from ${barNo}`;
   els.songTitle.textContent = state.score?.title || "Vocal pitch editor";
-  if (els.mix) els.mix.value = state.mixId;
+  renderMixSliders();
   const showNote = !!selected?.note.pitch;
   els.home.hidden = showNote;
   els.titleBlock.hidden = showNote;
@@ -381,6 +436,7 @@ function refreshControls() {
 
 function selectPart(part) {
   if (state.activePart === part) return;
+  mix.selectPart();
   state.activePart = part;
   const selected = state.selectedId ? findNote(state.score, state.selectedId) : null;
   if (selected) {
@@ -531,14 +587,11 @@ function togglePlay() {
   }
   if (!state.score || state.arming) return;
   if (!state.engine) state.engine = createEngine();
-  const mix = mixState(state.mixId);
-  state.gains = mix.gains;
-  state.mutes = mix.mutes;
   state.arming = true;
   refreshControls();
   const unlocked = state.engine.resume();
   unlocked
-    .then(() => state.engine.loadMix(mix))
+    .then(() => state.engine.loadMix(mix.playback()))
     .then(() => {
       state.arming = false;
       if (!state.score) {
@@ -547,7 +600,7 @@ function togglePlay() {
       }
       const prepared = preparePlayback(state.score, state.pianoPart);
       const written = state.layout?.measures[state.playMeasure]?.startQl ?? 0;
-      state.engine.setMix(mix);
+      state.engine.setMix(mix.playback());
       state.transport = startTransport({
         engine: state.engine,
         getEvents: () => preparePlayback(state.score, state.pianoPart).events,
@@ -781,15 +834,8 @@ els.backdrop.addEventListener("click", () => setMore(false));
 for (const id of ["part", "mix", "file"]) {
   document.querySelector(`#tab-${id}`).addEventListener("click", () => showSection(id));
 }
-els.mix.addEventListener("change", () => {
-  state.mixId = els.mix.value;
-  applyMix(true);
-  if (!state.engine) return;
-  const mix = mixState(state.mixId);
-  state.engine.loadMix(mix).then(() => state.engine?.setMix(mixState(state.mixId))).catch((error) => {
-    showError(error?.message || "Could not load the instrument sounds.");
-  });
-});
+els.mixSliders.addEventListener("input", onMixInput);
+els.mixReset.addEventListener("click", resetMix);
 els.piano.addEventListener("change", () => {
   const file = els.piano.files?.[0];
   els.piano.value = "";
@@ -862,5 +908,4 @@ if (document.fonts?.ready) {
   });
 }
 
-applyMix(false);
 refreshControls();
