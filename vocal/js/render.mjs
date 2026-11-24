@@ -74,11 +74,124 @@ export function renderScore(score, state) {
   const width = Math.max(x + 12, 320);
   const height = tb ? HEIGHT : SA_TOP + STAFF_H + 36;
   const tops = tb ? [SA_TOP, TB_TOP] : [SA_TOP];
-  const music = drawMusic(width, measures, placed, state, tops, height);
   const gutterSvg = tb
     ? drawGutter(gutter, sa.measures[0], tb.measures[0])
     : drawSingleGutter(gutter, sa.measures[0], height, sa.staffLabel || "Vocal");
-  return { gutter: gutterSvg, music, width, height, gutterWidth: gutter, measures, notes: placed, endQl: origin };
+  const spec = { measures, notes: placed, width, height, tops, gutterSvg, gutterW: gutter, endQl: origin };
+  if (!state.wrapWidth) {
+    const music = drawMusic(width, measures, placed, state, tops, height);
+    return { gutter: gutterSvg, music, width, height, gutterWidth: gutter, measures, notes: placed, endQl: origin, systems: null, wrapWidth: 0 };
+  }
+  const systems = layoutSystems(spec, state);
+  return {
+    gutter: gutterSvg,
+    music: systems.map((system) => system.svg).join(""),
+    width,
+    height,
+    gutterWidth: gutter,
+    measures,
+    notes: placed,
+    endQl: origin,
+    systems,
+    wrapWidth: state.wrapWidth,
+  };
+}
+
+function svgInner(svg) {
+  return svg.replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "");
+}
+
+// Cast off measures into systems that fit wrapWidth. The first system keeps the
+// full clef, key, and time gutter. Later systems clip off the time-signature
+// column (27px; 107 → 80 with one sharp) so each line carries clef and key only.
+function layoutSystems(spec, state) {
+  const { measures, width, height, tops, gutterSvg, gutterW } = spec;
+  const avail = state.wrapWidth;
+  const shortW = Math.max(48, gutterW - 27);
+  const edges = [0];
+  for (let i = 1; i < measures.length; i++) edges.push(measures[i].x);
+  edges.push(width);
+  const count = edges.length - 1;
+  const rows = [];
+  let i = 0;
+  while (i < count) {
+    const gw = i === 0 ? gutterW : shortW;
+    let j = i + 1;
+    while (j < count && gw + edges[j + 1] - edges[i] <= avail) j++;
+    rows.push({ i, j, gw, start: edges[i], end: edges[j] });
+    i = j;
+  }
+  const scale = Math.min(1.35, ...rows.map((row) => avail / (row.gw + row.end - row.start)));
+  const y1 = tops[0] - 10;
+  const y2 = tops[tops.length - 1] + STAFF_H + 10;
+  const gutterInner = svgInner(gutterSvg);
+  return rows.map((row, index) => {
+    const mw = row.end - row.start;
+    const dx = -row.start;
+    const sliceMeasures = measures.slice(row.i, row.j).map((measure) => ({
+      ...measure,
+      x: measure.x + dx,
+      xAt: (ql) => measure.xAt(ql) + dx,
+      harmonies: measure.harmonies.map((harmony) => ({ ...harmony, x: harmony.x + dx })),
+    }));
+    const sliceNotes = [];
+    for (const measure of measures.slice(row.i, row.j)) {
+      measure.systemIndex = index;
+      measure.hitX = measure.x + dx + row.gw;
+      for (const note of measure.notes) {
+        note.systemIndex = index;
+        note.hitX = note.x + dx + row.gw;
+        note.hitY = note.y;
+        sliceNotes.push({ ...note, x: note.x + dx });
+      }
+    }
+    const musicInner = svgInner(drawMusic(mw, sliceMeasures, sliceNotes, state, tops, height)).replace(
+      'id="cursor"',
+      `class="playhead" data-index="${index}"`,
+    );
+    const gutter = `<svg x="0" y="0" width="${row.gw}" height="${height}" viewBox="0 0 ${row.gw} ${height}">${gutterInner}</svg>`;
+    const musicSvg = `<svg x="${row.gw}" y="0" width="${mw}" height="${height}" viewBox="0 0 ${mw} ${height}">${musicInner}</svg>`;
+    const dispW = (row.gw + mw) * scale;
+    const dispH = height * scale;
+    const svg = `<svg class="system" data-index="${index}" data-first="${row.i}" data-last="${row.j - 1}" width="${dispW.toFixed(1)}" height="${dispH.toFixed(1)}" viewBox="0 0 ${row.gw + mw} ${height}" xmlns="http://www.w3.org/2000/svg">${gutter}${musicSvg}</svg>`;
+    return {
+      index,
+      first: row.i,
+      last: row.j - 1,
+      gw: row.gw,
+      start: row.start,
+      end: row.end,
+      scale,
+      y1,
+      y2,
+      svg,
+      notes: measures.slice(row.i, row.j).flatMap((measure) => measure.notes),
+      measures: measures.slice(row.i, row.j),
+    };
+  });
+}
+
+export function hitTest(layout, systemIndex, x, y, activePart) {
+  const system = layout.systems?.[systemIndex];
+  if (!system) return null;
+  if (y < 30 && x >= system.gw) {
+    const measure = system.measures.find((item) => x >= item.hitX && x < item.hitX + item.w);
+    if (measure) return { type: "bar", measure };
+  }
+  let best = null;
+  let bestD = 26 * 26;
+  for (const note of system.notes) {
+    if (note.isRest || note.badge || !note.parts?.includes(activePart)) continue;
+    const d = (note.hitX - x) ** 2 + (note.hitY - y) ** 2;
+    if (d < bestD) {
+      best = note;
+      bestD = d;
+    }
+  }
+  if (best) return { type: "note", note: best };
+  const measure = system.measures.find((item) => x >= item.hitX && x < item.hitX + item.w);
+  if (measure) return { type: "empty", measure };
+  return null;
 }
 
 function layoutMeasure(sa, tb, x, originQl) {
@@ -156,6 +269,8 @@ function layoutMeasure(sa, tb, x, originQl) {
       ambiguous: !!note.ambiguous,
       stackLower: !!note.stackLower,
       partCover: note.partCover || null,
+      pitchLabel: note.pitch ? `${note.pitch.step}${note.pitch.octave}` : "",
+      measureNumber: String(sa.number),
     });
   };
   for (const note of sa.notes) add(note, SA_TOP, sa.clef.sign);
@@ -259,7 +374,7 @@ function drawMusic(width, measures, notes, state, tops = [SA_TOP, TB_TOP], heigh
   drawTies(parts, notes);
   drawBeams(parts, notes, state);
   for (const note of notes) drawNote(parts, note, state);
-  const cursorX = measures[state.playMeasure]?.x ?? 0;
+  const cursorX = measures.find((measure) => measure.index === state.playMeasure)?.x ?? 0;
   const cursorBottom = tops[tops.length - 1] + STAFF_H + 10;
   parts.push(
     `<line id="cursor" x1="${cursorX}" y1="${tops[0] - 10}" x2="${cursorX}" y2="${cursorBottom}" stroke="#d61f2c" stroke-width="2" visibility="hidden"/>`,
@@ -451,7 +566,7 @@ function drawNote(parts, note, state) {
   const rx = (note.type === "whole" ? 7.2 : 5.8) * scale;
   const ry = 4.15 * scale;
   parts.push(
-    `<ellipse cx="${note.x}" cy="${note.y}" rx="${rx}" ry="${ry}" transform="rotate(-18 ${note.x} ${note.y})" fill="${open ? "#fff" : color}" stroke="${color}" stroke-width="${open ? 1.7 : 1}"/>`,
+    `<ellipse cx="${note.x}" cy="${note.y}" rx="${rx}" ry="${ry}" transform="rotate(-18 ${note.x} ${note.y})" fill="${open ? "#fff" : color}" stroke="${color}" stroke-width="${open ? 1.7 : 1}" data-id="${esc(note.id)}" data-parts="${esc((note.parts || []).join(""))}" data-pitch="${esc(note.pitchLabel || "")}" data-bar="${esc(note.measureNumber || "")}"/>`,
   );
   for (let i = 0; i < note.dots; i++) {
     const dy = note.step != null && note.step % 2 === 0 ? -STEP : 0;
@@ -623,4 +738,12 @@ export function xForQl(layout, ql) {
   const measure = layout.measures.find((m) => ql >= m.startQl && ql < m.endQl - 1e-6) || layout.measures[layout.measures.length - 1];
   if (!measure) return 0;
   return measure.xAt(ql - measure.startQl);
+}
+
+export function locateQl(layout, ql) {
+  const x = xForQl(layout, ql);
+  const measure = layout.measures.find((item) => ql >= item.startQl && ql < item.endQl - 1e-6) || layout.measures[layout.measures.length - 1];
+  const system = layout.systems?.[measure?.systemIndex];
+  if (!system) return { x, localX: x, systemIndex: 0, y1: 0, y2: 0 };
+  return { x, localX: x - system.start, systemIndex: system.index, y1: system.y1, y2: system.y2 };
 }

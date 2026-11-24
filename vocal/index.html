@@ -10,70 +10,77 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header>
-  <div class="title">
-    <a class="home" href="../">Pages</a>
-    <h1>Vocal pitch editor</h1>
+<header class="top">
+  <a class="home" id="home" href="../" aria-label="Pages">‹</a>
+  <div class="title" id="title-block"><strong id="song-title">Vocal pitch editor</strong></div>
+  <p class="readout" id="readout" hidden></p>
+  <div class="seg scope" id="scope" role="group" aria-label="Edit scope" hidden>
+    <button type="button" id="scope-chord" aria-pressed="true">Chord</button>
+    <button type="button" id="scope-bar" aria-pressed="false">Bar</button>
   </div>
-  <div class="filebtns">
-    <label for="file" id="open">Open<input id="file" type="file"></label>
-    <label for="piano-file" id="piano-open">Piano<input id="piano-file" type="file"></label>
-    <button type="button" id="example">Example</button>
-    <button type="button" id="export" disabled>Export</button>
-  </div>
-  <p id="filelabel">No file loaded</p>
+  <button type="button" class="ico" id="undo" aria-label="Undo" disabled><span class="icon">↶</span></button>
+  <button type="button" class="ico" id="redo" aria-label="Redo" disabled><span class="icon">↷</span></button>
 </header>
 <p id="error" class="error" hidden></p>
 <div id="chooser" hidden>
   <p id="chooser-prompt">This file has more than one staff. Choose the staff to edit. The other staves play along and are not edited.</p>
   <div id="chooser-list" role="group" aria-labelledby="chooser-prompt"></div>
 </div>
-<div id="stage">
-  <div id="gutter"></div>
-  <div id="scroll">
-    <div id="empty">
-      <p>Open a Piano Vocal MusicXML file or a MuseScore 3 or 4 file (.mscz). Only the vocal staves are shown. Chord symbols stay as written. Use Piano to add the piano part, or the chord symbols play as simple chords.</p>
-      <p>Nothing is uploaded. The file stays on this device.</p>
-    </div>
+<main id="staff">
+  <div id="empty">
+    <p>Open a Piano Vocal MusicXML file or a MuseScore 3 or 4 file (.mscz). Only the vocal staves are shown. Chord symbols stay as written. Use Piano to add the piano part, or the chord symbols play as simple chords.</p>
+    <p>Nothing is uploaded. The file stays on this device.</p>
   </div>
+</main>
+<div class="thumb" id="thumb-edit" hidden>
+  <button type="button" class="acc" id="flat" aria-label="Flat" disabled>♭</button>
+  <button type="button" class="step" id="up" aria-label="Up" disabled><span class="icon">▲</span></button>
+  <button type="button" class="play" id="play" aria-label="Play" disabled><span class="icon" id="play-icon">▶</span></button>
+  <button type="button" class="step" id="down" aria-label="Down" disabled><span class="icon">▼</span></button>
+  <button type="button" class="acc" id="sharp" aria-label="Sharp" disabled>♯</button>
 </div>
-<div class="bar">
-  <p id="readout">Open a Piano Vocal file</p>
-  <div class="row">
-    <div class="parts" role="group" aria-label="Part">
-      <button type="button" data-part="S" aria-pressed="true">S</button>
-      <button type="button" data-part="A" aria-pressed="false">A</button>
-      <button type="button" data-part="T" aria-pressed="false">T</button>
-      <button type="button" data-part="B" aria-pressed="false">B</button>
+<div class="thumb" id="thumb-nav">
+  <button type="button" class="nav" id="bar-prev" aria-label="Play from the previous bar" disabled><span class="icon">◀</span> Bar</button>
+  <button type="button" class="play wide" id="play-from" aria-label="Play" disabled><span class="icon" id="play-from-icon">▶</span> <span id="play-from-label">Play from 1</span></button>
+  <button type="button" class="nav" id="bar-next" aria-label="Play from the next bar" disabled>Bar <span class="icon">▶</span></button>
+</div>
+<nav class="ptabs parts four" aria-label="Part and more">
+  <button type="button" data-part="S" aria-pressed="true"><span class="dot"></span>Melody</button>
+  <button type="button" data-part="A" aria-pressed="false"><span class="dot"></span>High</button>
+  <button type="button" data-part="T" aria-pressed="false"><span class="dot"></span>Low</button>
+  <button type="button" data-part="B" aria-pressed="false" hidden><span class="dot"></span>Bass</button>
+  <button type="button" id="more" class="moretab" aria-expanded="false" aria-controls="drawer"><span class="icon">⋯</span>More</button>
+</nav>
+<div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+<section class="drawer" id="drawer" hidden aria-label="More">
+  <div class="grab"></div>
+  <div class="seg sections" role="tablist" aria-label="Section">
+    <button type="button" id="tab-part" role="tab" aria-pressed="true">Part</button>
+    <button type="button" id="tab-mix" role="tab" aria-pressed="false">Mix</button>
+    <button type="button" id="tab-file" role="tab" aria-pressed="false">File</button>
+  </div>
+  <div id="panel-part">
+    <h2 id="drawer-heading">Part</h2>
+    <div class="grid">
+      <button type="button" id="add-high" disabled>Add High</button>
+      <button type="button" id="add-low" disabled>Add Low</button>
+      <button type="button" id="remove-part" disabled>Remove</button>
+      <button type="button" id="make-melody" disabled>Big note</button>
+      <button type="button" id="unison" disabled>Unison</button>
+      <button type="button" id="changes" aria-pressed="false">Show changes</button>
     </div>
-    <button type="button" id="up" disabled>Up</button>
-    <button type="button" id="down" disabled>Down</button>
-    <button type="button" id="sharp" disabled aria-label="Sharp">♯</button>
-    <button type="button" id="flat" disabled aria-label="Flat">♭</button>
-  </div>
-  <p id="hint" class="hint" hidden></p>
-  <div class="row" id="structure">
-    <button type="button" id="scope-chord" aria-pressed="true">Chord</button>
-    <button type="button" id="scope-bar" aria-pressed="false">Bar</button>
-    <button type="button" id="add-high" disabled>Add High</button>
-    <button type="button" id="add-low" disabled>Add Low</button>
-    <button type="button" id="remove-part" disabled>Remove</button>
-    <button type="button" id="make-melody" disabled>Big note</button>
-    <button type="button" id="unison" disabled>Unison</button>
-  </div>
-  <div id="ambiguous" hidden>
-    <p id="ambiguous-prompt">Two notes in this chord. The lower note covers:</p>
-    <div class="parts" role="group" aria-labelledby="ambiguous-prompt">
-      <button type="button" data-cover="A">High</button>
-      <button type="button" data-cover="T">Low</button>
-      <button type="button" data-cover="AT">High and Low</button>
+    <div id="ambiguous" hidden>
+      <p id="ambiguous-prompt">Two notes in this chord. The lower note covers:</p>
+      <div class="parts" role="group" aria-labelledby="ambiguous-prompt">
+        <button type="button" data-cover="A">High</button>
+        <button type="button" data-cover="T">Low</button>
+        <button type="button" data-cover="AT">High and Low</button>
+      </div>
     </div>
+    <p id="hint" class="help">Mix holds tempo and the part volumes. File holds Open, Example and Export.</p>
   </div>
-  <div class="row">
-    <button type="button" id="undo" disabled>Undo</button>
-    <button type="button" id="redo" disabled>Redo</button>
-    <button type="button" id="changes" aria-pressed="false">Show changes</button>
-    <button type="button" id="play" disabled>Play</button>
+  <div id="panel-mix" hidden>
+    <h2>Mix</h2>
     <label class="mixpick">Mix
       <select id="mix" aria-label="Mix">
         <option value="all">All Parts</option>
@@ -84,7 +91,17 @@
     </label>
     <label class="tempo">Tempo <input id="tempo" type="range" min="40" max="160" value="68" aria-label="Tempo"> <span id="bpm">68</span></label>
   </div>
-</div>
+  <div id="panel-file" hidden>
+    <h2>File</h2>
+    <div class="grid">
+      <label for="file" id="open">Open<input id="file" type="file"></label>
+      <label for="piano-file" id="piano-open">Piano<input id="piano-file" type="file"></label>
+      <button type="button" id="example">Example</button>
+      <button type="button" id="export" disabled>Export</button>
+    </div>
+    <p id="filelabel">No file loaded</p>
+  </div>
+</section>
 <script type="module" src="js/app.mjs"></script>
 </body>
 </html>
