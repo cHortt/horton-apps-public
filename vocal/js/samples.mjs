@@ -12,7 +12,10 @@ export const LEVEL = {
 export const INSTRUMENTS = {
   flute: {
     label: "flute",
-    floor: 60,
+    // The recorded notes start at C4. Lower melody notes play that C4
+    // recording slower, at the written pitch, down through F3. The tone
+    // stays a flute (strong fundamental, weak upper harmonics), only darker.
+    floor: null,
     oneShot: false,
     trim: LEVEL.flute,
     notes: [
@@ -82,11 +85,28 @@ export const INSTRUMENTS = {
 
 export const CHANNEL_INSTRUMENT = { S: "flute", A: "oboe", T: "sax", B: "sax", P: "piano" };
 
-// Notes below an instrument's sample range move up one octave, then another
-// only if they are still below that range. Flute samples start at C4.
+// A floor raises notes that the samples cannot cover. The flute has no floor:
+// Melody is always the written pitch, including F3–B3 under the C4 sample.
 export function soundingMidi(floor, midi) {
   if (floor == null || midi >= floor) return midi;
   let next = midi + 12;
   while (next < floor) next += 12;
   return next;
+}
+
+// Which recording plays this written pitch, and how fast. The engine and the
+// pitch test both use this so a low melody note cannot be moved up an octave
+// unless the instrument sets a floor.
+export function selectVoice(instrument, midi) {
+  const sounded = soundingMidi(instrument.floor, midi);
+  let note = instrument.notes[0];
+  let best = Infinity;
+  for (const candidate of instrument.notes) {
+    const distance = Math.abs(candidate.midi - sounded);
+    if (distance < best) {
+      note = candidate;
+      best = distance;
+    }
+  }
+  return { sounded, note, rate: 2 ** ((sounded - note.midi) / 12) };
 }

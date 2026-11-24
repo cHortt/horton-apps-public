@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { zipSync } from "../js/fflate.mjs";
 import { mixState } from "../js/mix.mjs";
 import { openMscz } from "../js/mscz.mjs";
 import { parseScore, playbackEvents, playbackTimeline, setPitch } from "../js/musicxml.mjs";
 import { alignPianoEvents, blockChordMidis, preparePlayback } from "../js/playback.mjs";
-import { INSTRUMENTS, soundingMidi } from "../js/samples.mjs";
+import { INSTRUMENTS, selectVoice } from "../js/samples.mjs";
 import { dbToGain } from "../js/theory.mjs";
 
 function voiceScore(measures, name = "Voice") {
@@ -60,14 +61,133 @@ test("rehearsal mixes keep melody and piano aligned between High and Low", () =>
   assert.ok(Math.abs(melody.gains.P - dbToGain(-6)) < 1e-12);
 });
 
-test("flute notes below the sample range move up one octave and the sax reaches G3", () => {
-  assert.equal(soundingMidi(INSTRUMENTS.flute.floor, 55), 67);
-  assert.equal(soundingMidi(INSTRUMENTS.flute.floor, 60), 60);
-  assert.equal(soundingMidi(INSTRUMENTS.sax.floor, 55), 55);
+test("the sax reaches G3 and the flute has no octave floor", () => {
+  assert.equal(INSTRUMENTS.flute.floor, null);
+  assert.equal(selectVoice(INSTRUMENTS.flute, 55).sounded, 55);
+  assert.ok(selectVoice(INSTRUMENTS.flute, 55).rate < 1);
+  assert.equal(selectVoice(INSTRUMENTS.flute, 53).sounded, 53);
   assert.ok(INSTRUMENTS.sax.notes.some((note) => note.midi <= 55));
-  assert.ok(INSTRUMENTS.flute.notes.every((note) => note.midi >= 60));
-  assert.equal(INSTRUMENTS.flute.notes[0].url.endsWith(".wav"), true);
   assert.equal(INSTRUMENTS.piano.oneShot, true);
+});
+
+const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+function readWav(url) {
+  const file = readFileSync(new URL(`../${url}`, import.meta.url));
+  const view = new DataView(file.buffer, file.byteOffset, file.byteLength);
+  let offset = 12;
+  let rate = 44100;
+  let dataAt = 0;
+  let dataBytes = 0;
+  while (offset + 8 <= file.length) {
+    const id = file.toString("ascii", offset, offset + 4);
+    const size = view.getUint32(offset + 4, true);
+    if (id === "fmt ") rate = view.getUint32(offset + 12, true);
+    if (id === "data") {
+      dataAt = offset + 8;
+      dataBytes = size;
+      break;
+    }
+    offset += 8 + size + (size & 1);
+  }
+  const samples = new Float32Array(dataBytes / 2);
+  for (let i = 0; i < samples.length; i++) samples[i] = view.getInt16(dataAt + i * 2, true) / 32768;
+  return { rate, samples };
+}
+
+// Offline stand-in for a buffer source: play the chosen flute sample at the
+// engine's playback rate and read the steady tone.
+function renderVoice(voice, seconds = 0.45) {
+  const { rate, samples } = readWav(voice.note.url);
+  const start = Math.min(Math.floor(rate * 0.12), Math.max(0, samples.length - 8));
+  const out = new Float32Array(Math.floor(seconds * rate));
+  for (let i = 0; i < out.length; i++) {
+    const pos = start + i * voice.rate;
+    const i0 = Math.floor(pos);
+    const i1 = Math.min(i0 + 1, samples.length - 1);
+    const frac = pos - i0;
+    const a = i0 >= 0 && i0 < samples.length ? samples[i0] : 0;
+    const b = i1 >= 0 ? samples[i1] : a;
+    out[i] = a + (b - a) * frac;
+  }
+  return { samples: out, rate };
+}
+
+function fundamentalHz(samples, sampleRate) {
+  const width = Math.min(samples.length, Math.floor(sampleRate * 0.32));
+  const start = Math.min(Math.floor(sampleRate * 0.08), Math.max(0, samples.length - width));
+  let mean = 0;
+  for (let i = 0; i < width; i++) mean += samples[start + i];
+  mean /= width;
+  const minLag = Math.floor(sampleRate / 1000);
+  const maxLag = Math.floor(sampleRate / 70);
+  const corr = new Float64Array(maxLag + 1);
+  let energy = 0;
+  for (let i = 0; i < width; i++) {
+    const v = samples[start + i] - mean;
+    energy += v * v;
+  }
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    let sum = 0;
+    for (let i = 0; i < width - lag; i++) sum += (samples[start + i] - mean) * (samples[start + i + lag] - mean);
+    corr[lag] = sum / energy;
+  }
+  let bestLag = minLag;
+  let best = -1;
+  for (let lag = minLag + 1; lag < maxLag; lag++) {
+    if (corr[lag] > corr[lag - 1] && corr[lag] >= corr[lag + 1] && corr[lag] > best) {
+      best = corr[lag];
+      bestLag = lag;
+    }
+  }
+  // Prefer the shortest period that is nearly as strong, so a subharmonic
+  // does not report the octave below.
+  for (let lag = minLag + 1; lag < bestLag; lag++) {
+    if (corr[lag] > corr[lag - 1] && corr[lag] >= corr[lag + 1] && corr[lag] > best * 0.85) {
+      bestLag = lag;
+      break;
+    }
+  }
+  const left = corr[bestLag - 1] || 0;
+  const mid = corr[bestLag];
+  const right = corr[bestLag + 1] || 0;
+  const denom = left - 2 * mid + right;
+  const shift = denom === 0 ? 0 : (0.5 * (left - right)) / denom;
+  return sampleRate / (bestLag + shift);
+}
+
+test("melody notes from G3 through C5 play at the written pitch", () => {
+  const bodies = [];
+  for (let midi = 55; midi <= 72; midi++) {
+    const name = NAMES[midi % 12];
+    const step = name[0];
+    const alter = name.length > 1 ? "<alter>1</alter>" : "";
+    const octave = Math.floor(midi / 12) - 1;
+    bodies.push(`<note><pitch><step>${step}</step>${alter}<octave>${octave}</octave></pitch><duration>1</duration><type>quarter</type></note>`);
+  }
+  const measures = [];
+  for (let i = 0; i < bodies.length; i += 4) {
+    measures.push(measure(String(measures.length + 1), bodies.slice(i, i + 4).join("")));
+  }
+  const score = voiceScore(measures.join(""));
+  const melody = preparePlayback(score, null).events.filter((event) => event.channel === "S");
+  assert.deepEqual(
+    melody.map((event) => event.midi),
+    Array.from({ length: 18 }, (_, i) => 55 + i),
+  );
+  let previous = 0;
+  for (const event of melody) {
+    const voice = selectVoice(INSTRUMENTS.flute, event.midi);
+    assert.equal(voice.sounded, event.midi);
+    const heard = fundamentalHz(renderVoice(voice).samples, 44100);
+    const written = 440 * 2 ** ((event.midi - 69) / 12);
+    const cents = 1200 * Math.log2(heard / written);
+    const octaveUp = 1200 * Math.log2(heard / (written * 2));
+    assert.ok(Math.abs(cents) < 50, `midi ${event.midi} heard ${heard.toFixed(1)} Hz, ${cents.toFixed(1)} cents`);
+    assert.ok(Math.abs(octaveUp) > 600, `midi ${event.midi} sounded an octave high`);
+    assert.ok(heard > previous, `midi ${event.midi} did not rise`);
+    previous = heard;
+  }
 });
 
 test("an invisible unison note plays with its part", () => {

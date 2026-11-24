@@ -1,6 +1,6 @@
 // Sampled flute, oboe, tenor sax, and piano. Each instrument is fetched
 // the first time a mix needs it. Mix gains live on channel buses.
-import { CHANNEL_INSTRUMENT, INSTRUMENTS, LEVEL, soundingMidi } from "./samples.mjs";
+import { CHANNEL_INSTRUMENT, INSTRUMENTS, LEVEL, selectVoice } from "./samples.mjs";
 
 const CHANNELS = ["S", "A", "T", "B", "P"];
 
@@ -67,29 +67,16 @@ export function createEngine(context) {
     limiter.connect(ctx.destination);
   }
 
-  function nearest(notes, midi) {
-    let best = notes[0];
-    let bestDistance = Infinity;
-    for (const note of notes) {
-      const distance = Math.abs(note.midi - midi);
-      if (distance < bestDistance) {
-        best = note;
-        bestDistance = distance;
-      }
-    }
-    return best;
-  }
-
   function play(channel, midi, when, dur) {
     const id = CHANNEL_INSTRUMENT[channel];
     const inst = ready.get(id);
     if (!inst) return;
-    const sounded = soundingMidi(inst.floor, midi);
-    const sample = nearest(inst.notes, sounded);
+    const voice = selectVoice(inst, midi);
+    const sample = voice.note;
     if (!sample?.buffer) return;
     const src = ctx.createBufferSource();
     src.buffer = sample.buffer;
-    src.playbackRate.setValueAtTime(2 ** ((sounded - sample.midi) / 12), when);
+    src.playbackRate.setValueAtTime(voice.rate, when);
     if (!inst.oneShot && sample.loopStart != null && sample.loopEnd != null) {
       const endFrame = Math.min(sample.loopEnd, sample.buffer.length - 1);
       const startFrame = Math.min(sample.loopStart, endFrame - 1);
