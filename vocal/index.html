@@ -81,14 +81,8 @@
   </div>
   <div id="panel-mix" hidden>
     <h2>Mix</h2>
-    <label class="mixpick">Mix
-      <select id="mix" aria-label="Mix">
-        <option value="all">All Parts</option>
-        <option value="melody">Melody</option>
-        <option value="high">High</option>
-        <option value="low">Low</option>
-      </select>
-    </label>
+    <div id="mix-sliders"></div>
+    <button type="button" id="mix-reset">Reset</button>
     <label class="tempo">Tempo <input id="tempo" type="range" min="40" max="160" value="68" aria-label="Tempo"> <span id="bpm">68</span></label>
   </div>
   <div id="panel-file" hidden>
