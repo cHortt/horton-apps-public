@@ -85,7 +85,11 @@ function assignParts(role, voice, hasVoice2) {
   return [];
 }
 
-const SINGLE_STAFF_PARTS = ["S", "A", "T", "B"];
+// One name for each code, on a single staff and on SATB staves.
+// A is the melody (Alto), S the upper harmony (Soprano), T the lower (Tenor).
+export const PART_NAMES = { S: "Soprano", A: "Alto", T: "Tenor", B: "Bass", P: "Piano" };
+
+const SINGLE_STAFF_PARTS = ["A", "S", "T", "B"];
 
 function voiceNumber(note) {
   if (Number.isInteger(note.voiceIndex)) return note.voiceIndex + 1;
@@ -143,12 +147,12 @@ function clearStackFlags(note) {
 }
 
 // One vocal staff. A measure that uses another voice keeps each voice's part:
-// voice 1 is Melody, 2 is High, 3 is Low, 4 is Bass. A voice that holds only
+// voice 1 is Alto, 2 is Soprano, 3 is Tenor, 4 is Bass. A voice that holds only
 // rests does not count. A measure that stays in voice 1 stacks by file order,
-// not by the note's current pitch: the top written note is Melody and the
-// next one down is High, including a two-note chord. A stacked chord of exactly
-// two notes is ambiguous: the lower note stays High until the user says it
-// covers High, Low, or both. topFirst is MusicXML order (first note is the
+// not by the note's current pitch: the top written note is Alto and the
+// next one down is Soprano, including a two-note chord. A stacked chord of exactly
+// two notes is ambiguous: the lower note stays Soprano until the user says it
+// covers Soprano, Tenor, or both. topFirst is MusicXML order (first note is the
 // top). MuseScore stores a chord low to high, so the last note is the top.
 export function assignSingleStaffParts(measures, { topFirst = false } = {}) {
   for (const measure of measures) {
@@ -193,9 +197,9 @@ export function usesSizeNotes(measures) {
   return measures.some((measure) => measure.notes.some((note) => note.pitch && !note.grace && note.small));
 }
 
-// Full-size notes are Melody. Small notes are harmony: the upper is High and
-// the lower is Low. One small note is High only when it is above the melody;
-// otherwise it is Low. An invisible small note is a unison part.
+// Full-size notes are Alto. Small notes are harmony: the upper is Soprano and
+// the lower is Tenor. One small note is Soprano only when it is above the melody;
+// otherwise it is Tenor. An invisible small note is a unison part.
 export function assignSizeParts(measures) {
   for (const measure of measures) {
     const groups = new Map();
@@ -214,15 +218,15 @@ export function assignSizeParts(measures) {
       const melody = full[0] || null;
       const melodyMidi = melody ? pitchToMidi(melody.pitch) : null;
       for (const note of full) {
-        note.parts = ["S"];
+        note.parts = ["A"];
         clearStackFlags(note);
       }
       const smalls = group.filter((note) => note.small).sort(byPitchThenFile);
       if (smalls.length === 1) {
         const above = melodyMidi != null && pitchToMidi(smalls[0].pitch) > melodyMidi;
-        smalls[0].parts = [above ? "A" : "T"];
+        smalls[0].parts = [above ? "S" : "T"];
       } else {
-        const names = ["A", "T", "B"];
+        const names = ["S", "T", "B"];
         smalls.forEach((note, index) => {
           note.parts = [names[Math.min(index, names.length - 1)]];
         });
@@ -914,7 +918,7 @@ export function playbackEvents(score) {
   for (const part of score.parts) {
     if (part.role === "piano") events.push(...eventsFor(part, "P", timeline));
     else if (part.role === "SA" || part.role === "extra") {
-      // A one-staff MuseScore score keeps melody and both harmony parts here.
+      // A one-staff score keeps Alto and both harmony parts here.
       events.push(...eventsFor(part, "S", timeline));
       events.push(...eventsFor(part, "A", timeline));
       events.push(...eventsFor(part, "T", timeline));

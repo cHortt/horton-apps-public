@@ -195,16 +195,16 @@ function insertAfter(measure, chord, note) {
 
 function melodyOf(chord) {
   return (
-    chord.find((note) => !note.small && note.parts?.includes("S")) ||
+    chord.find((note) => !note.small && note.parts?.includes("A")) ||
     chord.find((note) => !note.small) ||
-    chord.find((note) => note.parts?.includes("S")) ||
+    chord.find((note) => note.parts?.includes("A")) ||
     null
   );
 }
 
 function harmonyPitch(melody, part, others, bothFresh) {
   const base = { step: melody.pitch.step, alter: melody.pitch.alter || 0, octave: melody.pitch.octave };
-  if (part !== "A" || bothFresh) return base;
+  if (part !== "S" || bothFresh) return base;
   const midis = others.filter((note) => note.small).map((note) => pitchToMidi(note.pitch));
   if (!midis.length) return chromaticMove(base, 1);
   if (pitchToMidi(base) > Math.max(...midis)) return base;
@@ -230,9 +230,9 @@ export function addParts(score, chords, parts) {
     const measure = findMeasure(score, chord[0]);
     const melody = melodyOf(chord);
     if (!measure || !melody?.pitch) continue;
-    const wanted = parts.filter((part) => part !== "S" && !chord.some((note) => note.parts.includes(part)));
+    const wanted = parts.filter((part) => part !== "A" && !chord.some((note) => note.parts.includes(part)));
     if (!wanted.length) continue;
-    const bothFresh = wanted.includes("A") && wanted.includes("T") && !chord.some((note) => note.small);
+    const bothFresh = wanted.includes("S") && wanted.includes("T") && !chord.some((note) => note.small);
     const created = [];
     for (const part of wanted) {
       const pitch = harmonyPitch(melody, part, [...chord.filter((note) => note.small), ...created], bothFresh);
@@ -247,7 +247,7 @@ export function addParts(score, chords, parts) {
 }
 
 export function removePart(score, chords, part) {
-  if (!part || part === "S") return 0;
+  if (!part || part === "A") return 0;
   const measures = new Set();
   for (const chord of chords) {
     if (!chord.length) continue;
@@ -287,7 +287,7 @@ export function setMelodyNotes(score, chords, part) {
 }
 
 export function setUnisonNotes(score, chords, part) {
-  const names = part === "S" ? ["A", "T"] : [part];
+  const names = part === "A" ? ["S", "T"] : [part];
   const plan = [];
   for (const chord of chords) {
     if (!chord.length) continue;
@@ -295,7 +295,7 @@ export function setUnisonNotes(score, chords, part) {
     const melody = melodyOf(chord);
     if (!measure || !melody?.pitch) continue;
     for (const name of names) {
-      if (!name || name === "S") continue;
+      if (!name || name === "A") continue;
       plan.push({
         chord,
         measure,

@@ -245,10 +245,10 @@ test("MuseScore 2 and older files are rejected", () => {
   const writtenByMs3 = pack(
     `<?xml version="1.0" encoding="UTF-8"?>\n<museScore version="4.00"><programVersion>3.6.2</programVersion><Score><Part id="1"><Staff><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff><trackName>Vocals</trackName><Instrument id="voice"><instrumentId>voice.ensemble</instrumentId></Instrument></Part><Staff id="1"><Measure><voice><Chord><durationType>quarter</durationType><Note><pitch>60</pitch><tpc>14</tpc></Note></Chord></voice></Measure></Staff></Score></museScore>\n`,
   );
-  assert.equal(openMscz(writtenByMs3).parts[0].measures[0].notes[0].parts[0], "S");
+  assert.equal(openMscz(writtenByMs3).parts[0].measures[0].notes[0].parts[0], "A");
 });
 
-test("one-staff chords map top to bottom as S, A, and T", () => {
+test("one-staff chords map bottom to top as Tenor, Soprano, and Alto", () => {
   const score = openMscz(pack(STACK_XML));
   assert.equal(score.format, "mscz");
   assert.equal(score.unresolvedTies, 0);
@@ -258,14 +258,14 @@ test("one-staff chords map top to bottom as S, A, and T", () => {
   const chord = score.parts[0].measures[0].notes.filter((note) => note.pitch && note.startQl === 0);
   assert.deepEqual(
     chord.map((note) => note.parts[0]),
-    ["T", "A", "S"],
+    ["T", "S", "A"],
   );
-  assert.equal(chord.find((note) => note.parts[0] === "S").lyric.text, "la");
+  assert.equal(chord.find((note) => note.parts[0] === "A").lyric.text, "la");
   assert.equal(chord.filter((note) => note.lyric).length, 1);
   assert.equal(score.parts[0].measures[0].harmonies[0].text, "Cm7/D");
   assert.equal(score.parts[0].measures[0].fifths, 0);
   const flat = score.parts[0].measures[0].notes.find((note) => note.pitch?.alter === -1);
-  assert.equal(flat.parts[0], "S");
+  assert.equal(flat.parts[0], "A");
   assert.equal(flat.accidentalSpan != null, true);
   const tied = score.parts[0].measures[0].notes.find((note) => note.tieStart);
   const tail = score.parts[0].measures[1].notes.find((note) => note.tieStop);
@@ -273,10 +273,10 @@ test("one-staff chords map top to bottom as S, A, and T", () => {
   assert.equal(score.parts[0].measures[1].barlines.right, "final");
   const events = playbackEvents(score);
   assert.deepEqual(events.filter((event) => event.ql === 0).map((event) => event.channel).sort(), ["A", "S", "T"]);
-  const held = events.find((event) => event.channel === "S" && event.ql === 2);
+  const held = events.find((event) => event.channel === "A" && event.ql === 2);
   assert.equal(held.durQl, 6);
-  assert.equal(events.some((event) => event.channel === "S" && event.ql === 4), false);
-  const view = renderScore(score, { activePart: "S", selectedId: null, showChanges: false, playMeasure: 0 });
+  assert.equal(events.some((event) => event.channel === "A" && event.ql === 4), false);
+  const view = renderScore(score, { activePart: "A", selectedId: null, showChanges: false, playMeasure: 0 });
   assert.match(view.music, /height="126"/);
   assert.match(view.gutter, />Vocal</);
   assert.doesNotMatch(view.gutter, />TB</);
@@ -332,7 +332,7 @@ test("edits change pitch data only, including a tie and an explicit accidental",
   const originalXml = STACK_XML;
   const score = openMscz(packed);
   const chord = score.parts[0].measures[0].notes.filter((note) => note.pitch && note.startQl === 0);
-  const top = chord.find((note) => note.parts[0] === "S");
+  const top = chord.find((note) => note.parts[0] === "A");
   const flat = score.parts[0].measures[0].notes.find((note) => note.accidentalSpan);
   const tied = score.parts[0].measures[0].notes.find((note) => note.tieStart);
   setPitch(score, top.id, diatonicMove(top.pitch, 0, 1));
@@ -493,24 +493,24 @@ const CROSS_XML = `<?xml version="1.0" encoding="UTF-8"?>
 function assertCrossing(score, label) {
   assert.equal(score.parts[0].staffLabel, "Vocal", label);
   const crossing = score.parts[0].measures[0];
-  const melody = crossing.notes.filter((note) => note.pitch && note.parts[0] === "S");
-  const high = crossing.notes.filter((note) => note.pitch && note.parts[0] === "A");
+  const melody = crossing.notes.filter((note) => note.pitch && note.parts[0] === "A");
+  const high = crossing.notes.filter((note) => note.pitch && note.parts[0] === "S");
   assert.deepEqual(melody.map((note) => note.pitch.step + note.pitch.octave), ["C4", "E4"], label);
   assert.deepEqual(high.map((note) => note.pitch.step + note.pitch.octave), ["E5", "C4"], label);
   assert.ok(pitchToMidi(high[0].pitch) > pitchToMidi(melody[0].pitch), label);
   assert.ok(pitchToMidi(high[1].pitch) < pitchToMidi(melody[1].pitch), label);
   const chord = score.parts[0].measures[1].notes.filter((note) => note.pitch);
-  assert.deepEqual(chord.map((note) => note.parts[0]), label === "musicxml" ? ["S", "A", "T"] : ["T", "A", "S"], label);
+  assert.deepEqual(chord.map((note) => note.parts[0]), label === "musicxml" ? ["A", "S", "T"] : ["T", "S", "A"], label);
   const channels = playbackEvents(score).filter((event) => event.ql === 0).map((event) => event.channel);
   assert.ok(channels.includes("S") && channels.includes("A"), label);
   if (score.parts.some((part) => part.role === "piano")) assert.ok(channels.includes("P"), label);
-  const view = renderScore(score, { activePart: "A", selectedId: high[0].id, showChanges: false, playMeasure: 0 });
+  const view = renderScore(score, { activePart: "S", selectedId: high[0].id, showChanges: false, playMeasure: 0 });
   assert.match(view.music, /#d61f2c/);
   assert.match(view.music, /#e86a12/);
   return { melody, high, chord };
 }
 
-test("a single staff keeps voice identity when High crosses above Melody", () => {
+test("a single staff keeps voice identity when Soprano crosses above Alto", () => {
   const mscz = openMscz(pack(CROSS_MSCZ));
   const xmlScore = parseScore(CROSS_XML);
   const fromMscz = assertCrossing(mscz, "mscz");
@@ -520,12 +520,12 @@ test("a single staff keeps voice identity when High crosses above Melody", () =>
   const crossed = fromMscz.high[0];
   const below = { step: "B", alter: 0, octave: 3 };
   setPitch(mscz, crossed.id, below);
-  assert.deepEqual(findPart(mscz, crossed.id), ["A"]);
+  assert.deepEqual(findPart(mscz, crossed.id), ["S"]);
   const exported = exportMscz(mscz);
   const reloaded = openMscz(exported);
-  assert.deepEqual(findPart(reloaded, crossed.id), ["A"]);
+  assert.deepEqual(findPart(reloaded, crossed.id), ["S"]);
   assert.deepEqual(findPitch(reloaded, crossed.id), below);
-  assert.deepEqual(findPart(reloaded, fromMscz.melody[0].id), ["S"]);
+  assert.deepEqual(findPart(reloaded, fromMscz.melody[0].id), ["A"]);
   const bottom = fromMscz.chord.find((note) => note.parts[0] === "T");
   setPitch(reloaded, bottom.id, { step: "A", alter: 0, octave: 5 });
   const restacked = openMscz(exportMscz(reloaded));
@@ -534,10 +534,10 @@ test("a single staff keeps voice identity when High crosses above Melody", () =>
 
   const xmlHigh = fromXml.high[0];
   setPitch(xmlScore, xmlHigh.id, below);
-  assert.deepEqual(findPart(xmlScore, xmlHigh.id), ["A"]);
+  assert.deepEqual(findPart(xmlScore, xmlHigh.id), ["S"]);
   const xmlOut = exportScore(xmlScore);
   const xmlAgain = parseScore(xmlOut);
-  assert.deepEqual(findPart(xmlAgain, xmlHigh.id), ["A"]);
+  assert.deepEqual(findPart(xmlAgain, xmlHigh.id), ["S"]);
   assert.deepEqual(findPitch(xmlAgain, xmlHigh.id), below);
   setPitch(xmlScore, xmlHigh.id, xmlHigh.originalPitch);
   assert.equal(exportScore(xmlScore), CROSS_XML);
@@ -636,11 +636,11 @@ test("an unlabeled voice with lyrics and stacked chords opens as one vocal staff
   const chord = score.parts[0].measures[0].notes.filter((note) => note.pitch && note.startQl === 0);
   assert.deepEqual(
     chord.map((note) => note.parts[0]),
-    ["T", "A", "S"],
+    ["T", "S", "A"],
   );
-  assert.equal(chord.find((note) => note.parts[0] === "S").lyric.text, "la");
+  assert.equal(chord.find((note) => note.parts[0] === "A").lyric.text, "la");
   assert.equal(score.parts[0].measures[0].harmonies[0].text, "Dsus");
-  const view = renderScore(score, { activePart: "S", selectedId: null, showChanges: false, playMeasure: 0 });
+  const view = renderScore(score, { activePart: "A", selectedId: null, showChanges: false, playMeasure: 0 });
   assert.match(view.gutter, />Vocal</);
   assert.match(view.music, /height="126"/);
 
@@ -650,7 +650,7 @@ test("an unlabeled voice with lyrics and stacked chords opens as one vocal staff
     assert.deepEqual(again[i].compressed, original[i].compressed, original[i].name);
   }
 
-  const top = chord.find((note) => note.parts[0] === "S");
+  const top = chord.find((note) => note.parts[0] === "A");
   const next = diatonicMove(top.pitch, 0, 1);
   setPitch(score, top.id, next);
   const out = exportMscz(score);
@@ -870,7 +870,7 @@ function conventionScore(instrumentId) {
 `;
 }
 
-test("one treble staff follows voice 1 Melody, voice 2 High, voice 3 Low", () => {
+test("one treble staff follows voice 1 Alto, voice 2 Soprano, voice 3 Tenor", () => {
   assert.throws(
     () => openMscz(pack(conventionScore("keyboard.piano.grand"))),
     new RegExp(NEEDS_VOCAL_ERROR.replace(/[.]/g, "\\.")),
@@ -884,14 +884,14 @@ test("one treble staff follows voice 1 Melody, voice 2 High, voice 3 Low", () =>
     assert.equal(score.parts[0].staffLabel, "Vocal", instrumentId);
     assert.equal(score.parts[0].measures[0].clef.sign, "G", instrumentId);
     const stacked = score.parts[0].measures[0].notes.filter((note) => note.pitch);
-    assert.deepEqual(stacked.map((note) => note.parts[0]), ["T", "A", "S"], instrumentId);
-    assert.equal(stacked.find((note) => note.parts[0] === "S").lyric.text, "la", instrumentId);
+    assert.deepEqual(stacked.map((note) => note.parts[0]), ["T", "S", "A"], instrumentId);
+    assert.equal(stacked.find((note) => note.parts[0] === "A").lyric.text, "la", instrumentId);
     const split = score.parts[0].measures[1].notes.filter((note) => note.pitch);
-    assert.deepEqual(split.map((note) => note.parts[0]), ["S", "A", "T"], instrumentId);
+    assert.deepEqual(split.map((note) => note.parts[0]), ["A", "S", "T"], instrumentId);
     assert.deepEqual(split.map((note) => `${note.pitch.step}${note.pitch.octave}`), ["C5", "E5", "G3"], instrumentId);
     const merged = score.parts[0].measures[2].notes.filter((note) => note.pitch);
-    assert.deepEqual(merged.map((note) => note.parts[0]), ["S", "S", "A"], instrumentId);
-    const view = renderScore(score, { activePart: "A", selectedId: split[1].id, showChanges: false, playMeasure: 1 });
+    assert.deepEqual(merged.map((note) => note.parts[0]), ["A", "A", "S"], instrumentId);
+    const view = renderScore(score, { activePart: "S", selectedId: split[1].id, showChanges: false, playMeasure: 1 });
     assert.match(view.gutter, />Vocal</, instrumentId);
     assert.doesNotMatch(view.gutter, />SA</, instrumentId);
     assert.doesNotMatch(view.gutter, />TB</, instrumentId);
@@ -908,7 +908,7 @@ test("one treble staff follows voice 1 Melody, voice 2 High, voice 3 Low", () =>
     assert.match(afterXml, /<shortName><\/shortName>/);
     assert.match(afterXml, /<trackName><\/trackName>/);
     assert.doesNotMatch(afterXml, /Vocal/);
-    assert.deepEqual(iterNotes(after).find((note) => note.id === high.id).parts, ["A"], instrumentId);
+    assert.deepEqual(iterNotes(after).find((note) => note.id === high.id).parts, ["S"], instrumentId);
   }
 });
 
@@ -936,7 +936,7 @@ test("a blank voice instrument opens with no lyrics and no part name", () => {
 `;
   const score = openMscz(pack(xml));
   assert.deepEqual(score.parts.map((part) => part.role), ["SA"]);
-  assert.equal(score.parts[0].measures[0].notes[0].parts[0], "S");
+  assert.equal(score.parts[0].measures[0].notes[0].parts[0], "A");
   const out = new TextDecoder().decode(entryData(readZip(exportMscz(score)).find((entry) => /\.mscx$/i.test(entry.name))));
   assert.match(out, /<longName><\/longName>/);
   assert.doesNotMatch(out, /Vocal/);
@@ -1030,15 +1030,15 @@ test("voice.vocals is the vocal staff with no part name, and rest voices do not 
   );
   assert.equal(score.parts[0].staffLabel, "Vocal");
   const melody = score.parts[0].measures[0].notes.filter((note) => note.pitch);
-  assert.deepEqual(melody.map((note) => note.parts[0]), ["S", "S", "S"]);
+  assert.deepEqual(melody.map((note) => note.parts[0]), ["A", "A", "A"]);
   const underRests = score.parts[0].measures[1].notes.filter((note) => note.pitch);
-  assert.deepEqual(underRests.map((note) => note.parts[0]), ["T", "A", "S"]);
-  assert.equal(underRests.find((note) => note.parts[0] === "S").lyric.text, "la");
+  assert.deepEqual(underRests.map((note) => note.parts[0]), ["T", "S", "A"]);
+  assert.equal(underRests.find((note) => note.parts[0] === "A").lyric.text, "la");
   const mixed = score.parts[0].measures[2].notes.filter((note) => note.pitch);
-  assert.deepEqual(mixed.map((note) => note.parts[0]), ["T", "A", "S", "A", "S", "T", "A", "S"]);
-  assert.equal(mixed.find((note) => note.lyric).parts[0], "S");
+  assert.deepEqual(mixed.map((note) => note.parts[0]), ["T", "S", "A", "S", "A", "T", "S", "A"]);
+  assert.equal(mixed.find((note) => note.lyric).parts[0], "A");
   const split = score.parts[0].measures[3].notes.filter((note) => note.pitch);
-  assert.deepEqual(split.map((note) => note.parts[0]), ["S", "A", "T"]);
+  assert.deepEqual(split.map((note) => note.parts[0]), ["A", "S", "T"]);
   assert.deepEqual(split.map((note) => note.pitch.step + note.pitch.octave), ["C5", "E5", "G3"]);
   assert.ok(score.parts[1].measures[0].notes.filter((note) => note.pitch).every((note) => note.parts.length === 0));
   const again = readZip(exportMscz(score));
@@ -1059,10 +1059,10 @@ test("voice.vocals is the vocal staff with no part name, and rest voices do not 
   assert.doesNotMatch(afterXml, /<longName>/);
   assert.doesNotMatch(afterXml, /<shortName>/);
   assert.match(afterXml, /<trackName><\/trackName>/);
-  assert.deepEqual(iterNotes(after).find((note) => note.id === unisonTop.id).parts, ["S"]);
+  assert.deepEqual(iterNotes(after).find((note) => note.id === unisonTop.id).parts, ["A"]);
   assert.deepEqual(
     iterNotes(after).filter((note) => note.measureIndex === 2 && note.pitch && note.startQl === 0).map((note) => note.parts[0]),
-    ["T", "A", "S"],
+    ["T", "S", "A"],
   );
 });
 
@@ -1085,7 +1085,7 @@ test("local MuseScore files round-trip when REAL_MSCZ is set", () => {
     const pitched = iterNotes(score).filter((note) => note.pitch && note.parts.length);
     assert.ok(pitched.length > 10, path);
     const tied = pitched.find((note) => note.tieGroup);
-    const free = pitched.find((note) => !note.tieGroup && note.parts.includes("S"));
+    const free = pitched.find((note) => !note.tieGroup);
     assert.ok(free, path);
     const before = free.pitch;
     setPitch(score, free.id, diatonicMove(free.pitch, findMeasureFifths(score, free.id), 1));

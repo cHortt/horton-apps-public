@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { channelsForScore, playbackMix } from "../js/mix.mjs";
+import { channelLabel, channelsForScore, playbackMix } from "../js/mix.mjs";
 import { exportMscz, openMscz } from "../js/mscz.mjs";
-import { NEEDS_VOCAL_ERROR, exportScore, parseScore, setPitch } from "../js/musicxml.mjs";
+import { NEEDS_VOCAL_ERROR, PART_NAMES, exportScore, parseScore, setPitch } from "../js/musicxml.mjs";
 import { preparePlayback } from "../js/playback.mjs";
 import { renderScore } from "../js/render.mjs";
 import { pitchToMidi } from "../js/theory.mjs";
@@ -64,9 +64,16 @@ test("a combined SAT and piano file edits the vocal lines and plays the piano", 
   const full = notes.filter((note) => !note.small);
   const upper = notes.find((note) => note.small && note.pitch.step === "E");
   const lower = notes.find((note) => note.small && note.pitch.step === "G");
-  assert.deepEqual(full.map((note) => note.parts[0]), ["S"]);
-  assert.deepEqual(upper.parts, ["A"]);
+  assert.deepEqual(full.map((note) => note.parts[0]), ["A"]);
+  assert.deepEqual(upper.parts, ["S"]);
   assert.deepEqual(lower.parts, ["T"]);
+  assert.equal(PART_NAMES[full[0].parts[0]], "Alto");
+  assert.equal(PART_NAMES[upper.parts[0]], "Soprano");
+  assert.equal(PART_NAMES[lower.parts[0]], "Tenor");
+  assert.deepEqual(
+    channelsForScore(score).map((channel) => channelLabel(PART_NAMES, channel)),
+    ["Soprano", "Alto", "Tenor", "Piano"],
+  );
   assert.ok(pitched(piano).every((note) => note.parts.length === 0));
   assert.equal(piano.measures[0].notes.find((note) => note.lyric)?.pitch.step, "A");
   const played = preparePlayback(score, null).events.filter((event) => event.channel === "P");
@@ -76,7 +83,7 @@ test("a combined SAT and piano file edits the vocal lines and plays the piano", 
   assert.equal(pianoOff.mutes.P, true);
   assert.equal(pianoOff.gains.P, 0);
   assert.ok(played.every((event) => pianoOff.mutes[event.channel]));
-  const view = renderScore(score, { activePart: "S", selectedId: null, showChanges: false, playMeasure: 0 });
+  const view = renderScore(score, { activePart: "A", selectedId: null, showChanges: false, playMeasure: 0 });
   assert.doesNotMatch(view.gutter, />TB</);
   assert.ok(view.notes.filter((note) => !note.isRest).every((note) => note.parts.length > 0));
 
@@ -88,7 +95,7 @@ test("a combined SAT and piano file edits the vocal lines and plays the piano", 
   const again = parseScore(out);
   const edited = pitched(again.parts[0]).find((note) => !note.small);
   assert.equal(edited.pitch.step, "D");
-  assert.deepEqual(edited.parts, ["S"]);
+  assert.deepEqual(edited.parts, ["A"]);
   assert.deepEqual(
     pitched(again.parts[1]).map((note) => pitchToMidi(note.pitch)).sort((a, b) => a - b),
     [54, 69],
@@ -208,8 +215,9 @@ test("a MuseScore SAT staff plus piano grand staff round-trips the piano bytes",
   assert.deepEqual(score.parts.map((part) => part.role), ["SA", "piano"]);
   assert.equal(score.parts[0].convention, "size");
   const notes = pitched(score.parts[0]);
-  assert.equal(notes.find((note) => pitchToMidi(note.pitch) === 60).parts[0], "S");
-  assert.equal(notes.find((note) => pitchToMidi(note.pitch) === 64).parts[0], "A");
+  assert.equal(notes.find((note) => pitchToMidi(note.pitch) === 60).parts[0], "A");
+  assert.equal(PART_NAMES[notes.find((note) => pitchToMidi(note.pitch) === 60).parts[0]], "Alto");
+  assert.equal(notes.find((note) => pitchToMidi(note.pitch) === 64).parts[0], "S");
   assert.equal(notes.find((note) => pitchToMidi(note.pitch) === 55).parts[0], "T");
   assert.ok(pitched(score.parts[1]).every((note) => note.parts.length === 0));
   const played = preparePlayback(score, null).events.filter((event) => event.channel === "P").map((event) => event.midi);
@@ -221,7 +229,7 @@ test("a MuseScore SAT staff plus piano grand staff round-trips the piano bytes",
   assert.deepEqual(staffSlices(out, "3"), staffSlices(MSCZ_SAT, "3"));
   assert.match(out, /<pitch>62<\/pitch>/);
   const again = openMscz(exportMscz(score));
-  assert.equal(pitchToMidi(pitched(again.parts[0]).find((note) => note.parts[0] === "S").pitch), 62);
+  assert.equal(pitchToMidi(pitched(again.parts[0]).find((note) => note.parts[0] === "A").pitch), 62);
   assert.deepEqual(pitched(again.parts[1]).map((note) => pitchToMidi(note.pitch)).sort((a, b) => a - b), [54, 69]);
 });
 

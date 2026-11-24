@@ -45,9 +45,9 @@
   <button type="button" class="nav" id="bar-next" aria-label="Play from the next bar" disabled>Bar <span class="icon">▶</span></button>
 </div>
 <nav class="ptabs parts four" aria-label="Part and more">
-  <button type="button" data-part="S" aria-pressed="true"><span class="dot"></span>Melody</button>
-  <button type="button" data-part="A" aria-pressed="false"><span class="dot"></span>High</button>
-  <button type="button" data-part="T" aria-pressed="false"><span class="dot"></span>Low</button>
+  <button type="button" data-part="S" aria-pressed="false"><span class="dot"></span>Soprano</button>
+  <button type="button" data-part="A" aria-pressed="true"><span class="dot"></span>Alto</button>
+  <button type="button" data-part="T" aria-pressed="false"><span class="dot"></span>Tenor</button>
   <button type="button" data-part="B" aria-pressed="false" hidden><span class="dot"></span>Bass</button>
   <button type="button" id="more" class="moretab" aria-expanded="false" aria-controls="drawer"><span class="icon">⋯</span>More</button>
 </nav>
@@ -62,8 +62,8 @@
   <div id="panel-part">
     <h2 id="drawer-heading">Part</h2>
     <div class="grid">
-      <button type="button" id="add-high" disabled>Add High</button>
-      <button type="button" id="add-low" disabled>Add Low</button>
+      <button type="button" id="add-high" disabled>Add Soprano</button>
+      <button type="button" id="add-low" disabled>Add Tenor</button>
       <button type="button" id="remove-part" disabled>Remove</button>
       <button type="button" id="make-melody" disabled>Big note</button>
       <button type="button" id="unison" disabled>Unison</button>
@@ -72,9 +72,9 @@
     <div id="ambiguous" hidden>
       <p id="ambiguous-prompt">Two notes in this chord. The lower note covers:</p>
       <div class="parts" role="group" aria-labelledby="ambiguous-prompt">
-        <button type="button" data-cover="A">High</button>
-        <button type="button" data-cover="T">Low</button>
-        <button type="button" data-cover="AT">High and Low</button>
+        <button type="button" data-cover="S">Soprano</button>
+        <button type="button" data-cover="T">Tenor</button>
+        <button type="button" data-cover="ST">Soprano and Tenor</button>
       </div>
     </div>
     <p id="hint" class="help">Mix holds tempo and the part volumes. File holds Open, Example and Export.</p>

@@ -1,6 +1,6 @@
 # Playback samples
 
-Melody, High, and Low use the built-in plucky tone. The piano is a sampled instrument. A mix downloads it the first time piano is needed, then the service worker keeps it on the device. Nothing from a score is uploaded.
+Soprano, Alto, and Tenor use the built-in plucky tone. The piano is a sampled instrument. A mix downloads it the first time piano is needed, then the service worker keeps it on the device. Nothing from a score is uploaded.
 
 | Instrument | Part | Files | About |
 |---|---|---|---|

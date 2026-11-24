@@ -37,14 +37,14 @@ test("measures wrap onto the same systems as the B4 mock", () => {
 
 test("a tap on a later system hits that system's note, and the playhead follows the same system", () => {
   const view = renderScore(score, { ...base, wrapWidth: 374 });
-  const note = view.notes.find((item) => item.pitchLabel === "A4" && item.measureNumber === "2" && item.parts.includes("A"));
+  const note = view.notes.find((item) => item.pitchLabel === "A4" && item.measureNumber === "2" && item.parts.includes("S"));
   assert.equal(note.systemIndex, 1);
-  const hit = hitTest(view, note.systemIndex, note.hitX, note.hitY, "A");
+  const hit = hitTest(view, note.systemIndex, note.hitX, note.hitY, "S");
   assert.equal(hit.type, "note");
   assert.equal(hit.note.id, note.id);
-  assert.notEqual(hitTest(view, 0, note.hitX, note.hitY, "A")?.note?.id, note.id);
-  assert.equal(hitTest(view, 0, 8, 70, "A"), null);
-  const elsewhere = hitTest(view, note.systemIndex, note.hitX + 80, note.hitY + 40, "A");
+  assert.notEqual(hitTest(view, 0, note.hitX, note.hitY, "S")?.note?.id, note.id);
+  assert.equal(hitTest(view, 0, 8, 70, "S"), null);
+  const elsewhere = hitTest(view, note.systemIndex, note.hitX + 80, note.hitY + 40, "S");
   assert.equal(elsewhere.type, "empty");
   assert.equal(elsewhere.measure.index, 1);
   const located = locateQl(view, note.absQl + 0.05);
