@@ -3,9 +3,11 @@ on:
   push:
     paths:
       - "vocal/**"
+      - ".github/workflows/vocal.yml"
   pull_request:
     paths:
       - "vocal/**"
+      - ".github/workflows/vocal.yml"
 permissions:
   contents: read
 jobs:
@@ -13,5 +15,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install fonts and screenshot tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-core
+          printf '%s\n' '<?xml version="1.0"?>' '<fontconfig><alias><family>sans-serif</family><prefer><family>Noto Sans</family></prefer></alias></fontconfig>' | sudo tee /etc/fonts/conf.d/00-vocal-noto.conf >/dev/null
+          fc-cache -f
+          npm install --prefix /tmp/vocal-test playwright@1.65.1 pngjs@7.0.0 pixelmatch@8.0.0
+          npx --prefix /tmp/vocal-test playwright install --with-deps chromium
       - name: Vocal pitch editor tests
-        run: node --test vocal/test/*.test.mjs
+        run: VOCAL_TEST_MODULES=/tmp/vocal-test/node_modules node --test vocal/test/*.test.mjs

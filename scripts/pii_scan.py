@@ -96,9 +96,11 @@ def main(argv):
         try: raw = open(path, encoding='utf-8').read()
         except UnicodeDecodeError:
             blob = open(path, 'rb').read()
-            # Learning lessons ship rendered PDFs. Scan their bytes with the same
-            # patterns; do not treat a real PDF as an automatic finding.
-            if rel.endswith('.pdf') and blob.startswith(b'%PDF-'):
+            # Learning lessons ship rendered PDFs. The vocal B4 screenshot
+            # test ships reference PNGs. Scan their bytes with the same
+            # patterns; do not treat those known binaries as an automatic finding.
+            png = rel.startswith('vocal/test/b4-') and rel.endswith('.png') and blob.startswith(b'\x89PNG\r\n\x1a\n')
+            if (rel.endswith('.pdf') and blob.startswith(b'%PDF-')) or png:
                 raw = blob.decode('latin-1')
             else:
                 print(f'{rel}: binary file (not allowed in this repo; publish text/HTML only)'); hits += 1; continue

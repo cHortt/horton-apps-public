@@ -14,13 +14,16 @@ import { mixState } from "./mix.mjs";
 import { exportMscz, openMscz } from "./mscz.mjs";
 import { MXL_ERROR, NO_STAFF_ERROR, audioQlFromWritten, editedName, exportScore, findNote, iterNotes, onsetKey, parseScore, rejectOpenedFile, setPitch, writtenQlFromAudio } from "./musicxml.mjs";
 import { preparePlayback } from "./playback.mjs";
-import { PART_COLORS, renderScore, xForQl } from "./render.mjs";
+import { hitTest, locateQl, renderScore } from "./render.mjs";
 import { chromaticMove, diatonicMove, samePitch, spellPretty } from "./theory.mjs";
 import { isZip, readZip } from "./zip.mjs";
 
 const PART_NAMES = { S: "Soprano", A: "Alto", T: "Tenor", B: "Bass", P: "Piano" };
 const SINGLE_NAMES = { S: "Melody", A: "High", T: "Low", B: "Bass", P: "Piano" };
-const SINGLE_SHORT = { S: "Mel", A: "High", T: "Low", B: "Bass" };
+
+const STAFF_PAD = 8;
+const TAB_LABEL = { S: "Melody", A: "High", T: "Low", B: "Bass" };
+const HELP = "Mix holds tempo and the part volumes. File holds Open, Example and Export.";
 
 const els = {
   example: document.querySelector("#example"),
@@ -28,8 +31,10 @@ const els = {
   file: document.querySelector("#file"),
   label: document.querySelector("#filelabel"),
   empty: document.querySelector("#empty"),
-  scroll: document.querySelector("#scroll"),
-  gutter: document.querySelector("#gutter"),
+  staff: document.querySelector("#staff"),
+  home: document.querySelector("#home"),
+  titleBlock: document.querySelector("#title-block"),
+  songTitle: document.querySelector("#song-title"),
   error: document.querySelector("#error"),
   chooser: document.querySelector("#chooser"),
   chooserList: document.querySelector("#chooser-list"),
@@ -37,6 +42,19 @@ const els = {
   play: document.querySelector("#play"),
   mix: document.querySelector("#mix"),
   piano: document.querySelector("#piano-file"),
+  playIcon: document.querySelector("#play-icon"),
+  playFrom: document.querySelector("#play-from"),
+  playFromIcon: document.querySelector("#play-from-icon"),
+  playFromLabel: document.querySelector("#play-from-label"),
+  barPrev: document.querySelector("#bar-prev"),
+  barNext: document.querySelector("#bar-next"),
+  thumbEdit: document.querySelector("#thumb-edit"),
+  thumbNav: document.querySelector("#thumb-nav"),
+  scope: document.querySelector("#scope"),
+  more: document.querySelector("#more"),
+  drawer: document.querySelector("#drawer"),
+  backdrop: document.querySelector("#drawer-backdrop"),
+  drawerHeading: document.querySelector("#drawer-heading"),
   changes: document.querySelector("#changes"),
   undo: document.querySelector("#undo"),
   redo: document.querySelector("#redo"),
@@ -74,6 +92,7 @@ const state = {
   undo: [],
   redo: [],
   scope: "chord",
+  moreSection: "part",
   barAnchor: null,
   barStart: 0,
   barEnd: 0,
@@ -141,8 +160,7 @@ function showStaffChoice(choices, bytes, filename) {
   els.label.textContent = filename;
   if (els.empty) els.empty.hidden = true;
   els.export.disabled = true;
-  els.gutter.replaceChildren();
-  els.scroll.replaceChildren();
+  els.staff.replaceChildren();
   els.chooser.hidden = false;
   els.chooserList.replaceChildren();
   for (const choice of choices) {
@@ -192,9 +210,14 @@ function loadMscz(bytes, filename, vocalStaffIndex) {
   acceptScore(opened, filename);
 }
 
+function wrapWidth() {
+  const inner = els.staff.clientWidth - STAFF_PAD * 2;
+  if (inner >= 80) return inner;
+  return Math.max(80, window.innerWidth - STAFF_PAD * 2);
+}
+
 function render() {
-  const left = els.scroll.scrollLeft;
-  const top = els.scroll.scrollTop;
+  const top = els.staff.scrollTop;
   state.layout = renderScore(state.score, {
     activePart: state.activePart,
     selectedId: state.selectedId,
@@ -203,11 +226,10 @@ function render() {
     scope: state.scope,
     selectionStart: state.barStart,
     selectionEnd: state.barEnd,
+    wrapWidth: wrapWidth(),
   });
-  els.gutter.innerHTML = state.layout.gutter;
-  els.scroll.innerHTML = state.layout.music;
-  els.scroll.scrollLeft = left;
-  els.scroll.scrollTop = top;
+  els.staff.innerHTML = state.layout.systems.map((system) => system.svg).join("");
+  els.staff.scrollTop = top;
   refreshControls();
 }
 
@@ -263,17 +285,23 @@ function applyMix(pushEngine = true) {
 function refreshControls() {
   const selected = state.selectedId ? findNote(state.score, state.selectedId) : null;
   const names = nameMap();
-  const single = names === SINGLE_NAMES;
-  const hideBass = single && state.score && !iterNotes(state.score).some((note) => note.parts.includes("B"));
+  const single = !state.score || names === SINGLE_NAMES;
+  const hideBass = !state.score || (single && !iterNotes(state.score).some((note) => note.parts.includes("B")));
   for (const button of document.querySelectorAll("[data-part]")) {
     const on = button.dataset.part === state.activePart;
     button.hidden = button.dataset.part === "B" && hideBass;
-    button.textContent = single ? SINGLE_SHORT[button.dataset.part] : button.dataset.part;
-    button.setAttribute("aria-label", names[button.dataset.part]);
+    const label = single ? TAB_LABEL[button.dataset.part] : button.dataset.part;
+    const dot = button.querySelector(".dot");
+    if (dot) {
+      let text = dot.nextSibling;
+      if (!text || text.nodeType !== 3) {
+        text = document.createTextNode("");
+        dot.after(text);
+      }
+      text.nodeValue = label;
+    }
+    button.setAttribute("aria-label", single ? TAB_LABEL[button.dataset.part] : names[button.dataset.part]);
     button.setAttribute("aria-pressed", on ? "true" : "false");
-    button.style.background = on ? PART_COLORS[button.dataset.part] : "#fff";
-    button.style.color = on ? "#fff" : PART_COLORS[button.dataset.part];
-    button.style.borderColor = PART_COLORS[button.dataset.part];
   }
   const size = vocalPart(state.score)?.convention === "size";
   const chords = selectionChords();
@@ -301,26 +329,41 @@ function refreshControls() {
         : "Two notes in this chord. The lower note covers:";
   }
   const hasAmbiguous = state.score && iterNotes(state.score).some((note) => note.ambiguous);
-  if (!state.score) els.hint.hidden = true;
-  else if (size) {
-    els.hint.hidden = false;
-    els.hint.textContent =
-      "Tap a note. Chord edits that chord. Bar edits one measure, and another bar number extends it. The big note is Melody. Small notes are High and Low.";
-  } else if (hasAmbiguous) {
-    els.hint.hidden = false;
-    els.hint.textContent = "A ? marks a two-note chord. Choose whether the lower note is High, Low, or both.";
-  } else els.hint.hidden = true;
+  els.hint.hidden = false;
+  els.hint.textContent = !size && hasAmbiguous
+    ? "A ? marks a two-note chord. Choose whether the lower note is High, Low, or both."
+    : HELP;
   const canEdit = !!selected?.note.pitch && !state.transport;
   for (const id of ["up", "down", "sharp", "flat"]) els[id].disabled = !canEdit;
   els.undo.disabled = !state.undo.length || !!state.transport;
   els.redo.disabled = !state.redo.length || !!state.transport;
   els.changes.setAttribute("aria-pressed", state.showChanges ? "true" : "false");
+  const playing = !!state.transport;
+  const mark = state.arming ? "…" : playing ? "■" : "▶";
+  const playName = state.arming ? "Loading" : playing ? "Stop" : "Play";
+  els.playIcon.textContent = mark;
+  els.playFromIcon.textContent = mark;
   els.play.disabled = !state.score || state.arming;
-  els.play.textContent = state.transport ? "Stop" : state.arming ? "Loading" : "Play";
-  if (!selected?.note.pitch) {
-    const bar = state.score ? state.score.parts[0].measures[state.playMeasure]?.number : "";
-    const where = state.scope === "bars" && state.barStart !== state.barEnd ? `bars ${Math.min(state.barStart, state.barEnd) + 1}–${Math.max(state.barStart, state.barEnd) + 1}` : `play from bar ${bar}`;
-    els.readout.textContent = state.score ? `${names[state.activePart]} · ${where}` : "Open a Piano Vocal file";
+  els.playFrom.disabled = !state.score || state.arming;
+  els.play.setAttribute("aria-label", playName);
+  els.playFrom.setAttribute("aria-label", playName);
+  els.barPrev.disabled = !state.score || playing || state.arming;
+  els.barNext.disabled = !state.score || playing || state.arming;
+  const staff = state.score?.parts.find((part) => part.role === "SA") || state.score?.parts[0];
+  const barNo = staff?.measures[state.playMeasure]?.number || "1";
+  els.playFromLabel.textContent = state.arming ? "Loading" : playing ? "Stop" : `Play from ${barNo}`;
+  els.songTitle.textContent = state.score?.title || "Vocal pitch editor";
+  if (els.mix) els.mix.value = state.mixId;
+  const showNote = !!selected?.note.pitch;
+  els.home.hidden = showNote;
+  els.titleBlock.hidden = showNote;
+  els.readout.hidden = !showNote;
+  els.scope.hidden = !showNote;
+  els.thumbEdit.hidden = !showNote;
+  els.thumbNav.hidden = showNote;
+  if (!showNote) {
+    els.drawerHeading.textContent = names[state.activePart];
+    els.readout.textContent = "";
     return;
   }
   const now = spellPretty(selected.note.pitch);
@@ -330,9 +373,10 @@ function refreshControls() {
   const unison = selected.note.unison ? " · unison" : "";
   const unsure = selected.note.ambiguous && !selected.note.partCover ? " · two-note chord" : "";
   const who = names[state.activePart];
+  els.drawerHeading.textContent = `${who} · bar ${bar}`;
   els.readout.textContent = changed
-    ? `${who} bar ${bar} · ${was} → ${now}${unison}`
-    : `${who} bar ${bar} · ${now}${unison}${unsure}`;
+    ? `${who} · bar ${bar} · ${was} → ${now}${unison}`
+    : `${who} · bar ${bar} · ${now}${unison}${unsure}`;
 }
 
 function selectPart(part) {
@@ -348,10 +392,10 @@ function selectPart(part) {
   else refreshControls();
 }
 
-function musicPoint(event) {
-  const svg = document.querySelector("#music");
+function svgPoint(svg, event) {
   const rect = svg.getBoundingClientRect();
   const view = svg.viewBox.baseVal;
+  if (!rect.width || !rect.height) return { x: 0, y: 0 };
   return {
     x: ((event.clientX - rect.left) / rect.width) * view.width,
     y: ((event.clientY - rect.top) / rect.height) * view.height,
@@ -372,49 +416,72 @@ function selectBar(index) {
   render();
 }
 
+function clearSelection() {
+  if (!state.selectedId && state.scope === "chord" && state.barAnchor == null) return;
+  state.selectedId = null;
+  state.scope = "chord";
+  state.barAnchor = null;
+  if (state.score) render();
+  else refreshControls();
+}
+
 function onTap(event) {
-  if (!state.layout) return;
-  const point = musicPoint(event);
-  if (point.y < 30) {
-    const measure = state.layout.measures.find((item) => point.x >= item.x && point.x < item.x + item.w);
-    if (measure) {
-      selectBar(measure.index);
-      return;
-    }
-  }
-  let best = null;
-  let bestD = 26 * 26;
-  for (const note of state.layout.notes) {
-    if (note.isRest || !note.parts.includes(state.activePart)) continue;
-    const d = (note.x - point.x) ** 2 + (note.y - point.y) ** 2;
-    if (d < bestD) {
-      best = note;
-      bestD = d;
-    }
-  }
-  if (best) {
-    state.scope = "chord";
-    state.barAnchor = null;
-    state.selectedId = best.id;
-    state.playMeasure = best.measureIndex;
-    render();
-    reveal(best.x, best.y);
+  if (!state.layout?.systems) return;
+  const svg = event.target.closest(".system");
+  if (!svg) {
+    clearSelection();
     return;
   }
-  const measure = state.layout.measures.find((m) => point.x >= m.x && point.x < m.x + m.w);
-  if (measure) {
-    state.playMeasure = measure.index;
+  const point = svgPoint(svg, event);
+  const hit = hitTest(state.layout, Number(svg.dataset.index), point.x, point.y, state.activePart);
+  if (!hit) {
+    clearSelection();
+    return;
+  }
+  if (hit.type === "bar") {
+    selectBar(hit.measure.index);
+    return;
+  }
+  if (hit.type === "note") {
+    state.scope = "chord";
+    state.barAnchor = null;
+    state.selectedId = hit.note.id;
+    state.playMeasure = hit.note.measureIndex;
     render();
+    reveal(hit.note);
+    return;
+  }
+  state.selectedId = null;
+  state.scope = "chord";
+  state.barAnchor = null;
+  state.playMeasure = hit.measure.index;
+  render();
+  revealSystem(hit.measure.systemIndex);
+}
+
+function reveal(note) {
+  if (!note || note.systemIndex == null) return;
+  const svg = document.querySelector(`.system[data-index="${note.systemIndex}"]`);
+  if (!svg) return;
+  const box = els.staff;
+  const svgRect = svg.getBoundingClientRect();
+  const boxRect = box.getBoundingClientRect();
+  const scale = svg.viewBox.baseVal.height ? svgRect.height / svg.viewBox.baseVal.height : 1;
+  const y = box.scrollTop + (svgRect.top - boxRect.top) + note.hitY * scale;
+  if (y < box.scrollTop + 24 || y > box.scrollTop + box.clientHeight - 24) {
+    box.scrollTop = Math.max(0, y - box.clientHeight * 0.35);
   }
 }
 
-function reveal(x, y) {
-  const box = els.scroll;
-  if (x < box.scrollLeft + 48 || x > box.scrollLeft + box.clientWidth - 48) {
-    box.scrollLeft = Math.max(0, x - box.clientWidth * 0.35);
-  }
-  if (y < box.scrollTop + 20 || y > box.scrollTop + box.clientHeight - 20) {
-    box.scrollTop = Math.max(0, y - box.clientHeight * 0.35);
+function revealSystem(index) {
+  const svg = document.querySelector(`.system[data-index="${index}"]`);
+  if (!svg) return;
+  const box = els.staff;
+  const svgRect = svg.getBoundingClientRect();
+  const boxRect = box.getBoundingClientRect();
+  const top = box.scrollTop + (svgRect.top - boxRect.top);
+  if (top < box.scrollTop + 4 || top + svgRect.height > box.scrollTop + box.clientHeight - 4) {
+    box.scrollTop = Math.max(0, top - 8);
   }
 }
 
@@ -432,7 +499,7 @@ function edit(kind) {
   setPitch(state.score, found.note.id, next);
   render();
   const placed = state.layout.notes.find((n) => n.id === found.note.id);
-  if (placed) reveal(placed.x, placed.y);
+  if (placed) reveal(placed);
 }
 
 function restore(entry, key) {
@@ -514,20 +581,50 @@ function stopPlayback() {
 }
 
 function moveCursor(ql) {
-  const cursor = document.querySelector("#cursor");
-  if (!cursor || !state.layout) return;
-  if (ql == null) {
-    cursor.setAttribute("visibility", "hidden");
-    return;
+  const heads = document.querySelectorAll(".playhead");
+  for (const head of heads) head.setAttribute("visibility", "hidden");
+  if (ql == null || !state.layout?.systems) return;
+  const loc = locateQl(state.layout, Math.min(ql, state.layout.endQl));
+  const head = document.querySelector(`.system[data-index="${loc.systemIndex}"] .playhead`);
+  if (!head) return;
+  head.setAttribute("x1", String(loc.localX));
+  head.setAttribute("x2", String(loc.localX));
+  head.setAttribute("y1", String(loc.y1));
+  head.setAttribute("y2", String(loc.y2));
+  head.setAttribute("visibility", "visible");
+  const svg = head.closest(".system");
+  const box = els.staff;
+  const svgRect = svg.getBoundingClientRect();
+  const boxRect = box.getBoundingClientRect();
+  const scale = svg.viewBox.baseVal.height ? svgRect.height / svg.viewBox.baseVal.height : 1;
+  const y = box.scrollTop + (svgRect.top - boxRect.top) + ((loc.y1 + loc.y2) / 2) * scale;
+  if (y < box.scrollTop + 16 || y > box.scrollTop + box.clientHeight - 16) {
+    box.scrollTop = Math.max(0, y - box.clientHeight * 0.45);
   }
-  const x = xForQl(state.layout, Math.min(ql, state.layout.endQl));
-  cursor.setAttribute("x1", String(x));
-  cursor.setAttribute("x2", String(x));
-  cursor.setAttribute("visibility", "visible");
-  const box = els.scroll;
-  if (x > box.scrollLeft + box.clientWidth - 24 || x < box.scrollLeft + 8) {
-    box.scrollLeft = Math.max(0, x - 36);
+}
+
+function stepPlayMeasure(dir) {
+  if (!state.score || state.transport) return;
+  const count = vocalPart(state.score)?.measures.length ?? 0;
+  state.playMeasure = Math.max(0, Math.min(count - 1, state.playMeasure + dir));
+  render();
+  const system = state.layout.systems?.find((item) => state.playMeasure >= item.first && state.playMeasure <= item.last);
+  if (system) revealSystem(system.index);
+}
+
+function showSection(name) {
+  state.moreSection = name;
+  for (const id of ["part", "mix", "file"]) {
+    document.querySelector(`#panel-${id}`).hidden = id !== name;
+    document.querySelector(`#tab-${id}`).setAttribute("aria-pressed", id === name ? "true" : "false");
   }
+}
+
+function setMore(open) {
+  els.drawer.hidden = !open;
+  els.backdrop.hidden = !open;
+  els.more.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) showSection(state.moreSection || "part");
 }
 
 function download() {
@@ -628,6 +725,9 @@ els.example.addEventListener("click", async () => {
 });
 els.export.addEventListener("click", download);
 els.play.addEventListener("click", togglePlay);
+els.playFrom.addEventListener("click", togglePlay);
+els.barPrev.addEventListener("click", () => stepPlayMeasure(-1));
+els.barNext.addEventListener("click", () => stepPlayMeasure(1));
 els.up.addEventListener("click", () => edit("up"));
 els.down.addEventListener("click", () => edit("down"));
 els.sharp.addEventListener("click", () => edit("sharp"));
@@ -676,6 +776,11 @@ els.changes.addEventListener("click", () => {
   if (state.score) render();
   else refreshControls();
 });
+els.more.addEventListener("click", () => setMore(els.drawer.hidden));
+els.backdrop.addEventListener("click", () => setMore(false));
+for (const id of ["part", "mix", "file"]) {
+  document.querySelector(`#tab-${id}`).addEventListener("click", () => showSection(id));
+}
 els.mix.addEventListener("change", () => {
   state.mixId = els.mix.value;
   applyMix(true);
@@ -702,11 +807,11 @@ for (const button of document.querySelectorAll("[data-part]")) {
   button.addEventListener("click", () => selectPart(button.dataset.part));
 }
 
-els.scroll.addEventListener("pointerdown", (event) => {
+els.staff.addEventListener("pointerdown", (event) => {
   if (event.pointerType === "mouse" && event.button !== 0) return;
   tap = { x: event.clientX, y: event.clientY };
 });
-els.scroll.addEventListener("pointerup", (event) => {
+els.staff.addEventListener("pointerup", (event) => {
   if (!tap) return;
   const dx = event.clientX - tap.x;
   const dy = event.clientY - tap.y;
@@ -714,11 +819,19 @@ els.scroll.addEventListener("pointerup", (event) => {
   if (dx * dx + dy * dy > 64) return;
   onTap(event);
 });
-els.scroll.addEventListener("pointercancel", () => {
+els.staff.addEventListener("pointercancel", () => {
   tap = null;
+});
+window.addEventListener("resize", () => {
+  if (!state.score || !state.layout) return;
+  if (Math.abs(wrapWidth() - state.layout.wrapWidth) > 1) render();
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    setMore(false);
+    return;
+  }
   if (!state.score || event.target.matches("input, textarea, select")) return;
   if (event.key === "ArrowUp") {
     event.preventDefault();

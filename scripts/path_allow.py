@@ -41,6 +41,7 @@ APPLETS = {
         r"test/[a-z0-9-]+\.test\.mjs",
         r"SAMPLES\.md",
         r"samples/piano/[0-9]+\.mp3",
+        r"test/b4-[a-z0-9-]+\.png",
     ],
     # Trip guide: one page and its rendered PDFs.
     "smokies-trip": [
