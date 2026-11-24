@@ -1,10 +1,25 @@
-// MuseScore 4 .mscz import and export.
+// MuseScore 3 and 4 .mscz import and export.
 // A .mscz file is a zip. The score itself is one .mscx XML entry; everything
 // else (style, breaks stored in that XML, thumbnail, mixer settings) is left
 // alone. Export splices pitch, tpc, tpc2, and an explicit accidental on the
 // notes that actually changed, and copies every other zip entry through.
+// Adding or removing a harmony note, or changing which note is full size,
+// touches only those chords.
 
-import { assignSingleStaffParts, child, isEdited, parseDocument, textOf } from "./musicxml.mjs";
+import {
+  applyReplacements,
+  assignSingleStaffParts,
+  assignSizeParts,
+  child,
+  closingInsertAt,
+  elementRemovalSpan,
+  indentAt,
+  isEdited,
+  NO_STAFF_ERROR,
+  parseDocument,
+  textOf,
+  usesSizeNotes,
+} from "./musicxml.mjs";
 import { pitchToMidi } from "./theory.mjs";
 import { entryData, readZip, writeZip } from "./zip.mjs";
 
@@ -33,7 +48,7 @@ const SUBTYPE = {
   2: "accidentalDoubleSharp",
 };
 
-const OLDER_FILE = "This file is MuseScore 3 or older. This editor opens MuseScore 4 files only.";
+const OLDER_FILE = "This file is MuseScore 2 or older. This editor opens MuseScore 3 and 4 files.";
 
 export function tpcInfo(tpc) {
   const n = Number(tpc);
@@ -95,12 +110,7 @@ function versionError(xml) {
   const raw = version?.[1] || version?.[2] || "";
   const major = Number(raw.split(".")[0]);
   if (!raw || !Number.isFinite(major)) return "This file is not a MuseScore score.";
-  if (major < 4) return OLDER_FILE;
-  const program = xml.match(/<programVersion>\s*([^<\s]+)/);
-  if (program) {
-    const programMajor = Number(program[1].split(".")[0]);
-    if (Number.isFinite(programMajor) && programMajor < 4) return OLDER_FILE;
-  }
+  if (major < 3) return OLDER_FILE;
   return "";
 }
 
@@ -155,12 +165,70 @@ function clefSign(type) {
   return String(type || "G").startsWith("F") ? "F" : "G";
 }
 
+const VOCAL_NAME = /vocal|melody|harmony|soprano|alto|tenor|bass|choir|voice|sing|lead/;
+const PIANO_NAME = /piano|keyboard|keys|organ/;
+
+function nameBlob(meta) {
+  return `${meta.trackName} ${meta.longName} ${meta.shortName} ${meta.instrumentId}`.toLowerCase();
+}
+
+function isClearlyVocal(meta) {
+  // A voice.* instrument still counts when longName, shortName, and trackName are blank.
+  return VOCAL_NAME.test(nameBlob(meta));
+}
+
 function kindOf(meta) {
-  const blob = `${meta.trackName} ${meta.longName} ${meta.shortName} ${meta.instrumentId}`.toLowerCase();
-  if (/vocal|melody|harmony|soprano|alto|tenor|bass|choir|voice|sing|lead/.test(blob)) return "vocal";
-  if (/piano|keyboard|keys|organ/.test(blob)) return "piano";
+  if (isClearlyVocal(meta)) return "vocal";
+  if (PIANO_NAME.test(nameBlob(meta))) return "piano";
   if (meta.staffCount >= 2) return "piano";
   return "vocal";
+}
+
+function staffHasLyrics(staff) {
+  return staff.measures.some((measure) => measure.notes.some((note) => note.lyric));
+}
+
+function staffHasNotes(staff) {
+  return staff.measures.some((measure) => measure.notes.some((note) => note.pitch && !note.grace));
+}
+
+function choiceLabel(staff) {
+  const name = [staff.meta.trackName, staff.meta.longName, staff.meta.shortName]
+    .map((part) => String(part || "").trim())
+    .find(Boolean);
+  const sign = staff.measures[0]?.clef?.sign === "F" ? "bass clef" : "treble clef";
+  const where = `Staff ${staff.staffIndex + 1}`;
+  return name ? `${where}, ${name}, ${sign}` : `${where}, ${sign}`;
+}
+
+// Names decide first. With no named voice, lyrics mark the staff to edit, and
+// so does a score that has only one staff. Several remaining staves are a
+// choice. Rest-only staves are not choices. Nothing here is written back.
+function selectUnlabeled(staves, vocalStaffIndex) {
+  const lyric = staves.filter(staffHasLyrics);
+  if (lyric.length) {
+    const chosen = new Set(lyric);
+    return { vocal: lyric, piano: staves.filter((staff) => !chosen.has(staff)) };
+  }
+  if (staves.length === 1) {
+    if (!staffHasNotes(staves[0])) throw new Error(NO_STAFF_ERROR);
+    return { vocal: staves, piano: [] };
+  }
+  const usable = staves.filter(staffHasNotes);
+  if (vocalStaffIndex == null) {
+    if (!usable.length) throw new Error(NO_STAFF_ERROR);
+    if (usable.length === 1) {
+      const only = usable[0];
+      return { vocal: [only], piano: staves.filter((staff) => staff !== only) };
+    }
+    return {
+      needsStaffChoice: true,
+      choices: usable.map((staff) => ({ index: staff.staffIndex, label: choiceLabel(staff) })),
+    };
+  }
+  const staff = staves.find((item) => item.staffIndex === vocalStaffIndex);
+  if (!staff || !staffHasNotes(staff)) throw new Error(NO_STAFF_ERROR);
+  return { vocal: [staff], piano: staves.filter((item) => item !== staff) };
 }
 
 function durationOf(xml, el, measureFrac) {
@@ -304,6 +372,13 @@ function parseStaff(xml, staffEl, meta, staffIndex) {
       const noteEls = el.tag === "Rest" ? [null] : el.children.filter((childEl) => childEl.tag === "Note");
       const start = cursorRef.frac;
       const made = [];
+      const firstNoteEl = noteEls.find(Boolean);
+      const chordInsertAt = el.tag === "Chord" ? closingInsertAt(xml, el.innerEnd) : null;
+      const noteIndent = firstNoteEl ? indentAt(xml, firstNoteEl.start) : indentAt(xml, el.innerEnd || el.start);
+      const firstPitch = firstNoteEl ? child(firstNoteEl, "pitch") : null;
+      const childIndent = firstPitch ? indentAt(xml, firstPitch.start) : `${noteIndent}  `;
+      const chordSpan = el.tag === "Chord" ? { start: el.start, end: el.end } : null;
+      const chordKey = `${staffIndex}|${measureIndex}|${voiceIndex}|${start[0]}/${start[1]}`;
       noteEls.forEach((noteEl, chordNote) => {
         const pitchEl = noteEl ? child(noteEl, "pitch") : null;
         const tpcEl = noteEl ? child(noteEl, "tpc") : null;
@@ -314,14 +389,23 @@ function parseStaff(xml, staffEl, meta, staffIndex) {
         const pitch = midi == null || tpc == null || !Number.isFinite(midi) || !Number.isFinite(tpc) ? null : pitchFromMidiTpc(midi, tpc);
         let tieNext = null;
         let tiePrev = null;
+        const spannerSpans = [];
         if (noteEl) {
           for (const childEl of noteEl.children) {
             const tie = (childEl.tag === "Spanner" && childEl.attrs.type === "Tie") || childEl.tag === "Tie";
             if (!tie) continue;
+            if (childEl.tag === "Spanner") {
+              const span = elementRemovalSpan(xml, childEl);
+              if (span) spannerSpans.push(span);
+            }
             tieNext = tieNext || readLocation(xml, child(childEl, "next"));
             tiePrev = tiePrev || readLocation(xml, child(childEl, "prev"));
           }
         }
+        const smallEl = noteEl ? child(noteEl, "small") : null;
+        const visibleEl = noteEl ? child(noteEl, "visible") : null;
+        const small = !!(smallEl && textOf(xml, smallEl) !== "0");
+        const visible = !(visibleEl && textOf(xml, visibleEl) === "0");
         const note = {
           voice: String(voiceIndex + 1),
           voiceIndex,
@@ -329,6 +413,7 @@ function parseStaff(xml, staffEl, meta, staffIndex) {
           measureRest: type === "measure",
           chord: chordNote > 0,
           chordSize: Math.max(1, noteEls.length),
+          originalChordNote: chordNote,
           grace,
           startFrac: start,
           startQl: fracQl(start),
@@ -356,12 +441,40 @@ function parseStaff(xml, staffEl, meta, staffIndex) {
           measureIndex,
           chordNote,
           midi,
+          small: small && !grace,
+          originalSmall: small && !grace,
+          visible,
+          originalVisible: visible,
+          unison: false,
+          added: false,
+          removed: false,
+          stripTies: false,
+          ambiguous: false,
+          stackLower: false,
+          partCover: null,
+          elementSpan: noteEl ? elementRemovalSpan(xml, noteEl) : null,
+          smallSpan: smallEl ? elementRemovalSpan(xml, smallEl) : null,
+          visibleSpan: visibleEl ? elementRemovalSpan(xml, visibleEl) : null,
+          spannerSpans,
+          tieSpans: [],
+          tagInsertAt: noteEl ? closingInsertAt(xml, noteEl.innerEnd) : null,
+          childIndent,
+          noteIndent,
+          insertAt: chordInsertAt,
+          chordKey,
+          chordSpan,
+          lyricXml: null,
+          beamXml: null,
+          chordTagSpan: null,
+          durationText: null,
         };
         notes.push(note);
         made.push(note);
       });
       if (lyric && made.length) {
-        const host = made.reduce((best, note) => ((note.midi ?? -1) >= (best.midi ?? -1) ? note : best));
+        const full = made.filter((note) => note.pitch && !note.small);
+        const pool = full.length ? full : made;
+        const host = pool.reduce((best, note) => ((note.midi ?? -1) >= (best.midi ?? -1) ? note : best));
         host.lyric = lyric;
       }
       if (!grace) cursorRef.frac = addFrac(cursorRef.frac, dur);
@@ -478,7 +591,12 @@ function assignVoices(measures, pair, unison) {
 }
 
 function assignOneStaff(measures) {
+  if (usesSizeNotes(measures)) {
+    assignSizeParts(measures);
+    return "size";
+  }
   assignSingleStaffParts(measures, { topFirst: false });
+  return "legacy";
 }
 
 function finishNotes(part) {
@@ -489,6 +607,47 @@ function finishNotes(part) {
       note.chordId = note.chordSize > 1 ? `${part.role}:${measure.index}:${note.voice}:${note.startQl}` : "";
     });
   }
+}
+
+function assembleParts(vocal, piano) {
+  const parts = [];
+  if (vocal.length <= 1) {
+    const staff = vocal[0];
+    if (staff) {
+      const convention = assignOneStaff(staff.measures);
+      const part = {
+        id: "vocal",
+        name: staff.meta.trackName || staff.meta.longName || "Vocal",
+        role: "SA",
+        staffLabel: "Vocal",
+        convention,
+        measures: staff.measures,
+      };
+      finishNotes(part);
+      parts.push(part);
+    }
+  } else {
+    const roles = [
+      { role: "SA", pair: ["S", "A"], label: "SA" },
+      { role: "TB", pair: ["T", "B"], label: "TB" },
+    ];
+    vocal.forEach((staff, index) => {
+      const spec = roles[Math.min(index, roles.length - 1)];
+      assignVoices(staff.measures, spec.pair, true);
+      const part = {
+        id: spec.role + index,
+        name: staff.meta.trackName || staff.meta.longName || spec.label,
+        role: index < 2 ? spec.role : "extra",
+        staffLabel: spec.label,
+        convention: "voices",
+        measures: staff.measures,
+      };
+      finishNotes(part);
+      parts.push(part);
+    });
+  }
+  if (piano.length) parts.push(mergePiano(piano));
+  return parts;
 }
 
 function mergePiano(staves) {
@@ -524,7 +683,7 @@ function mergePiano(staves) {
   return { id: "piano", name: "Piano", role: "piano", measures };
 }
 
-export function openMscz(bytes) {
+export function openMscz(bytes, options = {}) {
   let entries;
   try {
     entries = readZip(bytes);
@@ -563,43 +722,19 @@ export function openMscz(bytes) {
   const staffEls = scoreEl.children.filter((el) => el.tag === "Staff" && el.attrs.id);
   const staves = staffEls.map((el, index) => parseStaff(xml, el, metas[index] || { staffCount: 1, trackName: "", longName: "", shortName: "", instrumentId: "" }, index));
   const unresolvedTies = linkTies(staves);
-  const vocal = staves.filter((staff) => staff.kind === "vocal");
-  const piano = staves.filter((staff) => staff.kind === "piano");
-  const parts = [];
-  if (vocal.length <= 1) {
-    const staff = vocal[0];
-    if (staff) {
-      assignOneStaff(staff.measures);
-      const part = {
-        id: "vocal",
-        name: staff.meta.trackName || staff.meta.longName || "Vocal",
-        role: "SA",
-        staffLabel: "Vocal",
-        measures: staff.measures,
-      };
-      finishNotes(part);
-      parts.push(part);
-    }
+  const requested = Number.isInteger(options.vocalStaffIndex) ? options.vocalStaffIndex : null;
+  let vocal;
+  let piano;
+  if (staves.some((staff) => isClearlyVocal(staff.meta))) {
+    vocal = staves.filter((staff) => staff.kind === "vocal");
+    piano = staves.filter((staff) => staff.kind === "piano");
   } else {
-    const roles = [
-      { role: "SA", pair: ["S", "A"], label: "SA" },
-      { role: "TB", pair: ["T", "B"], label: "TB" },
-    ];
-    vocal.forEach((staff, index) => {
-      const spec = roles[Math.min(index, roles.length - 1)];
-      assignVoices(staff.measures, spec.pair, true);
-      const part = {
-        id: spec.role + index,
-        name: staff.meta.trackName || staff.meta.longName || spec.label,
-        role: index < 2 ? spec.role : "extra",
-        staffLabel: spec.label,
-        measures: staff.measures,
-      };
-      finishNotes(part);
-      parts.push(part);
-    });
+    const selected = selectUnlabeled(staves, requested);
+    if (selected.needsStaffChoice) return { needsStaffChoice: true, choices: selected.choices };
+    vocal = selected.vocal;
+    piano = selected.piano;
   }
-  if (piano.length) parts.push(mergePiano(piano));
+  const parts = assembleParts(vocal, piano);
   const quarterBpm = staves.map((staff) => staff.quarterBpm).find((tempo) => tempo != null) ?? 120;
   return {
     format: "mscz",
@@ -611,38 +746,86 @@ export function openMscz(bytes) {
     title: "Vocal score",
     quarterBpm,
     parts,
+    nextAdd: 1,
   };
 }
 
-function spliceXml(score) {
+function msczAddedNote(note) {
+  const indent = note.noteIndent || "            ";
+  const inner = note.childIndent || `${indent}  `;
+  const midi = pitchToMidi(note.pitch);
+  const tpc = tpcFromPitch(note.pitch);
+  const lines = [`${indent}<Note>`, `${inner}<pitch>${midi}</pitch>`, `${inner}<tpc>${tpc}</tpc>`];
+  if (note.small) lines.push(`${inner}<small>1</small>`);
+  if (note.visible === false) lines.push(`${inner}<visible>0</visible>`);
+  lines.push(`${indent}</Note>`);
+  return lines.join("\n");
+}
+
+export function msczReplacements(score) {
   const replacements = [];
+  const inserts = new Map();
+  const addInsert = (at, text) => {
+    if (at == null || !text) return;
+    inserts.set(at, `${inserts.get(at) || ""}${text}`);
+  };
   for (const part of score.parts) {
     for (const measure of part.measures) {
-      for (const note of measure.notes) {
-        if (!note.pitch || !note.pitchSpan || !isEdited(note)) continue;
-        const midi = pitchToMidi(note.pitch);
-        const tpc = tpcFromPitch(note.pitch);
-        replacements.push({ ...note.pitchSpan, text: String(midi) });
-        if (note.tpcSpan) replacements.push({ ...note.tpcSpan, text: String(tpc) });
-        const delta = tpc - note.originalTpc;
-        if (note.tpc2Span && note.originalTpc2 != null) {
-          replacements.push({ ...note.tpc2Span, text: String(note.originalTpc2 + delta) });
+      for (const note of [...measure.notes, ...(measure.dropped || [])]) {
+        if (note.removed && !note.added && note.elementSpan) {
+          replacements.push({ ...note.elementSpan, text: "", kind: "delete-note" });
+          continue;
         }
-        if (note.accidentalSpan) {
-          const written = tpcInfo(note.tpc2Span && note.originalTpc2 != null ? note.originalTpc2 + delta : tpc);
-          const subtype = SUBTYPE[written.alter] || "accidentalNatural";
-          replacements.push({ ...note.accidentalSpan, text: subtype });
+        if (!note.pitch || note.removed) continue;
+        if (note.added) continue;
+        if (note.pitchSpan && isEdited(note)) {
+          const midi = pitchToMidi(note.pitch);
+          const tpc = tpcFromPitch(note.pitch);
+          replacements.push({ ...note.pitchSpan, text: String(midi), kind: "pitch" });
+          if (note.tpcSpan) replacements.push({ ...note.tpcSpan, text: String(tpc), kind: "tpc" });
+          const delta = tpc - note.originalTpc;
+          if (note.tpc2Span && note.originalTpc2 != null) {
+            replacements.push({ ...note.tpc2Span, text: String(note.originalTpc2 + delta), kind: "tpc2" });
+          }
+          if (note.accidentalSpan) {
+            const written = tpcInfo(note.tpc2Span && note.originalTpc2 != null ? note.originalTpc2 + delta : tpc);
+            const subtype = SUBTYPE[written.alter] || "accidentalNatural";
+            replacements.push({ ...note.accidentalSpan, text: subtype, kind: "accidental" });
+          }
         }
+        const tags = [];
+        if (note.small !== note.originalSmall) {
+          if (note.small && !note.smallSpan) tags.push(`${note.childIndent || ""}<small>1</small>`);
+          else if (!note.small && note.smallSpan) replacements.push({ ...note.smallSpan, text: "", kind: "small" });
+        }
+        if (note.visible !== note.originalVisible) {
+          if (note.visible === false && !note.visibleSpan) tags.push(`${note.childIndent || ""}<visible>0</visible>`);
+          else if (note.visible !== false && note.visibleSpan) replacements.push({ ...note.visibleSpan, text: "", kind: "visible" });
+        }
+        if (tags.length && note.tagInsertAt != null) addInsert(note.tagInsertAt, `${tags.join("\n")}\n`);
+        if (note.stripTies) {
+          for (const span of note.spannerSpans || []) replacements.push({ ...span, text: "", kind: "tie" });
+        }
+      }
+      const added = measure.notes.filter((note) => note.added && !note.removed && note.insertAt != null);
+      const byAt = new Map();
+      for (const note of added) {
+        if (!byAt.has(note.insertAt)) byAt.set(note.insertAt, []);
+        byAt.get(note.insertAt).push(note);
+      }
+      for (const [at, notes] of byAt) {
+        const block = notes.map(msczAddedNote).join("\n");
+        const prefix = score.xml[at - 1] === "\n" ? "" : "\n";
+        addInsert(at, `${prefix}${block}\n`);
       }
     }
   }
-  replacements.sort((a, b) => b.start - a.start || b.end - a.end);
-  let xml = score.xml;
-  for (const replacement of replacements) {
-    if (xml.slice(replacement.start, replacement.end) === replacement.text) continue;
-    xml = xml.slice(0, replacement.start) + replacement.text + xml.slice(replacement.end);
-  }
-  return xml;
+  for (const [at, text] of inserts) replacements.push({ start: at, end: at, text, kind: "insert" });
+  return replacements.filter((rep) => rep.start != null && !(rep.start === rep.end && rep.text === ""));
+}
+
+function spliceXml(score) {
+  return applyReplacements(score.xml, msczReplacements(score));
 }
 
 export function exportMscz(score) {

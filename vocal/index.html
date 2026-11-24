@@ -23,11 +23,15 @@
   <p id="filelabel">No file loaded</p>
 </header>
 <p id="error" class="error" hidden></p>
+<div id="chooser" hidden>
+  <p id="chooser-prompt">This file has more than one staff. Choose the staff to edit. The other staves play along and are not edited.</p>
+  <div id="chooser-list" role="group" aria-labelledby="chooser-prompt"></div>
+</div>
 <div id="stage">
   <div id="gutter"></div>
   <div id="scroll">
     <div id="empty">
-      <p>Open a Piano Vocal MusicXML file or a MuseScore 4 file (.mscz). Only the vocal staves are shown. Chord symbols stay as written, and the piano plays along without being edited.</p>
+      <p>Open a Piano Vocal MusicXML file or a MuseScore 3 or 4 file (.mscz). Only the vocal staves are shown. Chord symbols stay as written, and the piano plays along without being edited.</p>
       <p>Nothing is uploaded. The file stays on this device.</p>
     </div>
   </div>
@@ -52,6 +56,24 @@
     <button type="button" id="down" disabled>Down</button>
     <button type="button" id="sharp" disabled aria-label="Sharp">♯</button>
     <button type="button" id="flat" disabled aria-label="Flat">♭</button>
+  </div>
+  <p id="hint" class="hint" hidden></p>
+  <div class="row" id="structure">
+    <button type="button" id="scope-chord" aria-pressed="true">Chord</button>
+    <button type="button" id="scope-bar" aria-pressed="false">Bar</button>
+    <button type="button" id="add-high" disabled>Add High</button>
+    <button type="button" id="add-low" disabled>Add Low</button>
+    <button type="button" id="remove-part" disabled>Remove</button>
+    <button type="button" id="make-melody" disabled>Big note</button>
+    <button type="button" id="unison" disabled>Unison</button>
+  </div>
+  <div id="ambiguous" hidden>
+    <p id="ambiguous-prompt">Two notes in this chord. The lower note covers:</p>
+    <div class="parts" role="group" aria-labelledby="ambiguous-prompt">
+      <button type="button" data-cover="A">High</button>
+      <button type="button" data-cover="T">Low</button>
+      <button type="button" data-cover="AT">High and Low</button>
+    </div>
   </div>
   <div class="row">
     <button type="button" id="undo" disabled>Undo</button>

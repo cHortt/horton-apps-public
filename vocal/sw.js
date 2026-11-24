@@ -2,13 +2,14 @@
 // without touching another applet. Every applet on this Pages site shares
 // one origin (chortt.github.io).
 const CACHE_PREFIX = "vocal-";
-const CACHE = `${CACHE_PREFIX}pitch-v4`;
+const CACHE = `${CACHE_PREFIX}pitch-v6`;
 const ASSETS = [
   "./",
   "./index.html",
   "./style.css",
   "./sw.js",
   "./js/app.mjs",
+  "./js/edit.mjs",
   "./js/audio.mjs",
   "./js/fflate.mjs",
   "./js/mscz.mjs",

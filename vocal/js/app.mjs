@@ -1,11 +1,24 @@
 import { createEngine, startTransport } from "./audio.mjs";
+import {
+  addParts,
+  chordMates,
+  removePart,
+  restoreScore,
+  setMelodyNotes,
+  setStackCover,
+  setUnisonNotes,
+  snapshotScore,
+  vocalPart,
+} from "./edit.mjs";
 import { exportMscz, openMscz } from "./mscz.mjs";
-import { MXL_ERROR, editedName, exportScore, findNote, parseScore, playbackEvents, rejectOpenedFile, setPitch } from "./musicxml.mjs";
+import { MXL_ERROR, NO_STAFF_ERROR, editedName, exportScore, findNote, iterNotes, onsetKey, parseScore, playbackEvents, rejectOpenedFile, setPitch } from "./musicxml.mjs";
 import { PART_COLORS, renderScore, xForQl } from "./render.mjs";
 import { chromaticMove, defaultMix, diatonicMove, samePitch, spellPretty } from "./theory.mjs";
 import { isZip, readZip } from "./zip.mjs";
 
 const PART_NAMES = { S: "Soprano", A: "Alto", T: "Tenor", B: "Bass", P: "Piano" };
+const SINGLE_NAMES = { S: "Melody", A: "High", T: "Low", B: "Bass", P: "Piano" };
+const SINGLE_SHORT = { S: "Mel", A: "High", T: "Low", B: "Bass" };
 const CHANNELS = ["S", "A", "T", "B", "P"];
 
 const els = {
@@ -17,6 +30,8 @@ const els = {
   scroll: document.querySelector("#scroll"),
   gutter: document.querySelector("#gutter"),
   error: document.querySelector("#error"),
+  chooser: document.querySelector("#chooser"),
+  chooserList: document.querySelector("#chooser-list"),
   readout: document.querySelector("#readout"),
   play: document.querySelector("#play"),
   mixerBtn: document.querySelector("#mixer-btn"),
@@ -30,6 +45,15 @@ const els = {
   flat: document.querySelector("#flat"),
   tempo: document.querySelector("#tempo"),
   bpm: document.querySelector("#bpm"),
+  hint: document.querySelector("#hint"),
+  ambiguous: document.querySelector("#ambiguous"),
+  scopeChord: document.querySelector("#scope-chord"),
+  scopeBar: document.querySelector("#scope-bar"),
+  addHigh: document.querySelector("#add-high"),
+  addLow: document.querySelector("#add-low"),
+  removePart: document.querySelector("#remove-part"),
+  makeMelody: document.querySelector("#make-melody"),
+  unison: document.querySelector("#unison"),
 };
 
 const state = {
@@ -44,6 +68,10 @@ const state = {
   mutes: { S: false, A: false, T: false, B: false, P: false },
   undo: [],
   redo: [],
+  scope: "chord",
+  barAnchor: null,
+  barStart: 0,
+  barEnd: 0,
   layout: null,
   transport: null,
   engine: null,
@@ -60,9 +88,11 @@ function acceptScore(score, filename) {
   const hasUpper = score.parts.some((p) => p.role === "SA");
   const hasLower = score.parts.some((p) => p.role === "TB");
   if (!hasUpper && !hasLower) {
-    showError("This file needs a vocal staff.");
+    hideChooser();
+    showError(NO_STAFF_ERROR);
     return;
   }
+  hideChooser();
   showError("");
   state.score = score;
   state.filename = filename;
@@ -71,6 +101,10 @@ function acceptScore(score, filename) {
   state.bpm = Math.round(score.quarterBpm) || 68;
   state.undo = [];
   state.redo = [];
+  state.scope = "chord";
+  state.barAnchor = null;
+  state.barStart = 0;
+  state.barEnd = 0;
   els.tempo.value = String(Math.max(40, Math.min(160, state.bpm)));
   els.bpm.textContent = els.tempo.value;
   state.bpm = Number(els.tempo.value);
@@ -81,8 +115,41 @@ function acceptScore(score, filename) {
   render();
 }
 
+function hideChooser() {
+  els.chooser.hidden = true;
+  els.chooserList.replaceChildren();
+}
+
+function showStaffChoice(choices, bytes, filename) {
+  showError("");
+  stopPlayback();
+  state.score = null;
+  state.layout = null;
+  state.selectedId = null;
+  state.undo = [];
+  state.redo = [];
+  state.filename = filename;
+  els.label.textContent = filename;
+  if (els.empty) els.empty.hidden = true;
+  els.export.disabled = true;
+  els.gutter.replaceChildren();
+  els.scroll.replaceChildren();
+  els.chooser.hidden = false;
+  els.chooserList.replaceChildren();
+  for (const choice of choices) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = choice.label;
+    button.addEventListener("click", () => loadMscz(bytes, filename, choice.index));
+    els.chooserList.appendChild(button);
+  }
+  refreshControls();
+  els.readout.textContent = "Choose the staff to edit";
+}
+
 function loadXml(xml, filename) {
   stopPlayback();
+  hideChooser();
   const rejected = rejectOpenedFile(filename, xml);
   if (rejected) {
     showError(rejected);
@@ -98,16 +165,22 @@ function loadXml(xml, filename) {
   acceptScore(score, filename);
 }
 
-function loadMscz(bytes, filename) {
+function loadMscz(bytes, filename, vocalStaffIndex) {
   stopPlayback();
-  let score;
+  let opened;
   try {
-    score = openMscz(bytes);
+    const options = Number.isInteger(vocalStaffIndex) ? { vocalStaffIndex } : undefined;
+    opened = openMscz(bytes, options);
   } catch (error) {
+    hideChooser();
     showError(error.message || "Could not read that MuseScore file.");
     return;
   }
-  acceptScore(score, filename);
+  if (opened.needsStaffChoice) {
+    showStaffChoice(opened.choices, bytes, filename);
+    return;
+  }
+  acceptScore(opened, filename);
 }
 
 function render() {
@@ -118,6 +191,9 @@ function render() {
     selectedId: state.selectedId,
     showChanges: state.showChanges,
     playMeasure: state.playMeasure,
+    scope: state.scope,
+    selectionStart: state.barStart,
+    selectionEnd: state.barEnd,
   });
   els.gutter.innerHTML = state.layout.gutter;
   els.scroll.innerHTML = state.layout.music;
@@ -126,15 +202,93 @@ function render() {
   refreshControls();
 }
 
+function nameMap() {
+  const single = state.score && !state.score.parts.some((part) => part.role === "TB");
+  return single ? SINGLE_NAMES : PART_NAMES;
+}
+
+function selectionChords() {
+  const part = vocalPart(state.score);
+  if (!part) return [];
+  if (state.scope === "bars") {
+    const start = Math.min(state.barStart, state.barEnd);
+    const end = Math.max(state.barStart, state.barEnd);
+    const chords = [];
+    for (let index = start; index <= end; index++) {
+      const measure = part.measures[index];
+      if (!measure) continue;
+      const seen = new Set();
+      for (const note of measure.notes) {
+        if (!note.pitch || note.grace) continue;
+        const key = `${note.voice}|${onsetKey(note)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        chords.push(chordMates(measure, note));
+      }
+    }
+    return chords;
+  }
+  const found = state.selectedId ? findNote(state.score, state.selectedId) : null;
+  if (!found?.note.pitch) return [];
+  return [chordMates(found.measure, found.note)];
+}
+
 function refreshControls() {
   const selected = state.selectedId ? findNote(state.score, state.selectedId) : null;
+  const names = nameMap();
+  const single = names === SINGLE_NAMES;
+  const hideBass = single && state.score && !iterNotes(state.score).some((note) => note.parts.includes("B"));
   for (const button of document.querySelectorAll("[data-part]")) {
     const on = button.dataset.part === state.activePart;
+    button.hidden = button.dataset.part === "B" && hideBass;
+    button.textContent = single ? SINGLE_SHORT[button.dataset.part] : button.dataset.part;
+    button.setAttribute("aria-label", names[button.dataset.part]);
     button.setAttribute("aria-pressed", on ? "true" : "false");
     button.style.background = on ? PART_COLORS[button.dataset.part] : "#fff";
     button.style.color = on ? "#fff" : PART_COLORS[button.dataset.part];
     button.style.borderColor = PART_COLORS[button.dataset.part];
   }
+  document.querySelectorAll("#mixer .chan").forEach((row, index) => {
+    const channel = ["S", "A", "T", "B", "P"][index];
+    const span = row.querySelector("span");
+    if (span && channel) span.textContent = names[channel];
+    row.hidden = channel === "B" && hideBass;
+  });
+  const size = vocalPart(state.score)?.convention === "size";
+  const chords = selectionChords();
+  const busy = !!state.transport;
+  els.scopeChord.setAttribute("aria-pressed", state.scope === "chord" ? "true" : "false");
+  els.scopeBar.setAttribute("aria-pressed", state.scope === "bars" ? "true" : "false");
+  els.addHigh.disabled = !size || !chords.length || busy;
+  els.addLow.disabled = !size || !chords.length || busy;
+  els.removePart.disabled = !size || !chords.length || state.activePart === "S" || busy;
+  els.removePart.textContent = state.activePart === "S" || state.activePart === "P" ? "Remove" : `Remove ${names[state.activePart]}`;
+  els.makeMelody.disabled = !size || !chords.length || busy || state.activePart === "S" || state.activePart === "B" && hideBass;
+  els.unison.disabled = !size || !chords.length || busy;
+  const ambiguous = chords.filter((chord) => chord.some((note) => note.ambiguous));
+  els.ambiguous.hidden = ambiguous.length === 0;
+  if (ambiguous.length) {
+    const lower = ambiguous.flatMap((chord) => chord).find((note) => note.stackLower);
+    const cover = (lower?.partCover || ["A"]).join("");
+    for (const button of document.querySelectorAll("[data-cover]")) {
+      button.setAttribute("aria-pressed", button.dataset.cover === cover ? "true" : "false");
+    }
+    const prompt = document.querySelector("#ambiguous-prompt");
+    prompt.textContent =
+      ambiguous.length > 1
+        ? `${ambiguous.length} two-note chords. The lower note covers:`
+        : "Two notes in this chord. The lower note covers:";
+  }
+  const hasAmbiguous = state.score && iterNotes(state.score).some((note) => note.ambiguous);
+  if (!state.score) els.hint.hidden = true;
+  else if (size) {
+    els.hint.hidden = false;
+    els.hint.textContent =
+      "Tap a note. Chord edits that chord. Bar edits one measure, and another bar number extends it. The big note is Melody. Small notes are High and Low.";
+  } else if (hasAmbiguous) {
+    els.hint.hidden = false;
+    els.hint.textContent = "A ? marks a two-note chord. Choose whether the lower note is High, Low, or both.";
+  } else els.hint.hidden = true;
   const canEdit = !!selected?.note.pitch && !state.transport;
   for (const id of ["up", "down", "sharp", "flat"]) els[id].disabled = !canEdit;
   els.undo.disabled = !state.undo.length || !!state.transport;
@@ -145,16 +299,20 @@ function refreshControls() {
   els.mixerBtn.setAttribute("aria-expanded", els.mixer.hidden ? "false" : "true");
   if (!selected?.note.pitch) {
     const bar = state.score ? state.score.parts[0].measures[state.playMeasure]?.number : "";
-    els.readout.textContent = state.score ? `${PART_NAMES[state.activePart]} · play from bar ${bar}` : "Open a Piano Vocal file";
+    const where = state.scope === "bars" && state.barStart !== state.barEnd ? `bars ${Math.min(state.barStart, state.barEnd) + 1}–${Math.max(state.barStart, state.barEnd) + 1}` : `play from bar ${bar}`;
+    els.readout.textContent = state.score ? `${names[state.activePart]} · ${where}` : "Open a Piano Vocal file";
     return;
   }
   const now = spellPretty(selected.note.pitch);
   const was = spellPretty(selected.note.originalPitch);
   const changed = state.showChanges && !samePitch(selected.note.pitch, selected.note.originalPitch);
   const bar = selected.measure.number;
+  const unison = selected.note.unison ? " · unison" : "";
+  const unsure = selected.note.ambiguous && !selected.note.partCover ? " · two-note chord" : "";
+  const who = names[state.activePart];
   els.readout.textContent = changed
-    ? `${PART_NAMES[state.activePart]} bar ${bar} · ${was} → ${now}`
-    : `${PART_NAMES[state.activePart]} bar ${bar} · ${now}`;
+    ? `${who} bar ${bar} · ${was} → ${now}${unison}`
+    : `${who} bar ${bar} · ${now}${unison}${unsure}`;
 }
 
 function applyDefaultMix(refreshSliders = true) {
@@ -174,7 +332,11 @@ function selectPart(part) {
   if (state.activePart === part) return;
   state.activePart = part;
   const selected = state.selectedId ? findNote(state.score, state.selectedId) : null;
-  if (selected && !selected.note.parts.includes(part)) state.selectedId = null;
+  if (selected) {
+    const mates = chordMates(selected.measure, selected.note);
+    const next = mates.find((note) => note.parts.includes(part));
+    state.selectedId = next ? next.id : selected.note.parts.includes(part) ? selected.note.id : null;
+  }
   applyDefaultMix(true);
   if (state.score) render();
   else refreshControls();
@@ -190,9 +352,30 @@ function musicPoint(event) {
   };
 }
 
+function selectBar(index) {
+  if (state.scope !== "bars" || state.barAnchor == null) {
+    state.scope = "bars";
+    state.barAnchor = index;
+    state.barStart = index;
+    state.barEnd = index;
+  } else {
+    state.barStart = Math.min(state.barAnchor, index);
+    state.barEnd = Math.max(state.barAnchor, index);
+  }
+  state.playMeasure = index;
+  render();
+}
+
 function onTap(event) {
   if (!state.layout) return;
   const point = musicPoint(event);
+  if (point.y < 30) {
+    const measure = state.layout.measures.find((item) => point.x >= item.x && point.x < item.x + item.w);
+    if (measure) {
+      selectBar(measure.index);
+      return;
+    }
+  }
   let best = null;
   let bestD = 26 * 26;
   for (const note of state.layout.notes) {
@@ -204,6 +387,8 @@ function onTap(event) {
     }
   }
   if (best) {
+    state.scope = "chord";
+    state.barAnchor = null;
     state.selectedId = best.id;
     state.playMeasure = best.measureIndex;
     render();
@@ -245,8 +430,24 @@ function edit(kind) {
 }
 
 function restore(entry, key) {
+  if (entry.kind === "struct") {
+    restoreScore(state.score, key === "from" ? entry.before : entry.after);
+    if (state.selectedId && !findNote(state.score, state.selectedId)) state.selectedId = null;
+    render();
+    return;
+  }
   setPitch(state.score, entry.id, entry[key]);
   state.selectedId = entry.id;
+  render();
+}
+
+function withStructure(fn) {
+  if (!state.score || state.transport) return;
+  const before = snapshotScore(state.score);
+  fn();
+  state.undo.push({ kind: "struct", before, after: snapshotScore(state.score) });
+  state.redo = [];
+  if (state.selectedId && !findNote(state.score, state.selectedId)) state.selectedId = null;
   render();
 }
 
@@ -326,6 +527,7 @@ els.file.addEventListener("change", () => {
   if (!file) return;
   const named = rejectOpenedFile(file.name);
   if (named) {
+    hideChooser();
     showError(named);
     return;
   }
@@ -337,12 +539,16 @@ els.file.addEventListener("change", () => {
       return;
     }
     if (isZip(bytes)) {
+      hideChooser();
       showError(MXL_ERROR);
       return;
     }
     loadXml(new TextDecoder("utf-8").decode(bytes), file.name);
   };
-  reader.onerror = () => showError("Could not read that file.");
+  reader.onerror = () => {
+    hideChooser();
+    showError("Could not read that file.");
+  };
   reader.readAsArrayBuffer(file);
 });
 
@@ -380,6 +586,33 @@ els.redo.addEventListener("click", () => {
   state.undo.push(entry);
   restore(entry, "to");
 });
+els.scopeChord.addEventListener("click", () => {
+  state.scope = "chord";
+  state.barAnchor = null;
+  if (state.score) render();
+  else refreshControls();
+});
+els.scopeBar.addEventListener("click", () => {
+  const found = state.selectedId ? findNote(state.score, state.selectedId) : null;
+  const index = found?.measure.index ?? state.playMeasure;
+  state.scope = "bars";
+  state.barAnchor = index;
+  state.barStart = index;
+  state.barEnd = index;
+  if (state.score) render();
+  else refreshControls();
+});
+els.addHigh.addEventListener("click", () => withStructure(() => addParts(state.score, selectionChords(), ["A"])));
+els.addLow.addEventListener("click", () => withStructure(() => addParts(state.score, selectionChords(), ["T"])));
+els.removePart.addEventListener("click", () => withStructure(() => removePart(state.score, selectionChords(), state.activePart)));
+els.makeMelody.addEventListener("click", () => withStructure(() => setMelodyNotes(state.score, selectionChords(), state.activePart)));
+els.unison.addEventListener("click", () => withStructure(() => setUnisonNotes(state.score, selectionChords(), state.activePart)));
+for (const button of document.querySelectorAll("[data-cover]")) {
+  button.addEventListener("click", () => {
+    const cover = button.dataset.cover === "AT" ? ["A", "T"] : [button.dataset.cover];
+    withStructure(() => setStackCover(selectionChords(), cover));
+  });
+}
 els.changes.addEventListener("click", () => {
   state.showChanges = !state.showChanges;
   if (state.score) render();

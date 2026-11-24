@@ -2,6 +2,7 @@
 // Hit targets are returned separately so a tap can ignore every part except the active one.
 
 import { isEdited } from "./musicxml.mjs";
+import { NO_STAFF_ERROR } from "./musicxml.mjs";
 import { staffStep } from "./theory.mjs";
 
 export const PART_COLORS = { S: "#d61f2c", A: "#e86a12", T: "#178a38", B: "#1d4ed8" };
@@ -55,7 +56,7 @@ function gutterWidth(fifths) {
 export function renderScore(score, state) {
   const sa = score.parts.find((p) => p.role === "SA");
   const tb = score.parts.find((p) => p.role === "TB") || null;
-  if (!sa) throw new Error("This file needs a vocal staff.");
+  if (!sa) throw new Error(NO_STAFF_ERROR);
   const count = tb ? Math.min(sa.measures.length, tb.measures.length) : sa.measures.length;
   const fifths = sa.measures[0]?.fifths ?? 0;
   const gutter = gutterWidth(fifths);
@@ -144,13 +145,23 @@ function layoutMeasure(sa, tb, x, originQl) {
       tieStop: note.tieStop,
       chordId: note.chordId || "",
       staffTop,
-      edited: isEdited(note),
+      edited:
+        isEdited(note) ||
+        !!note.added ||
+        (note.originalSmall != null && note.small !== note.originalSmall) ||
+        (note.originalVisible != null && note.visible !== note.originalVisible),
       absQl: originQl + note.startQl,
+      small: !!note.small,
+      unison: !!note.unison,
+      ambiguous: !!note.ambiguous,
+      stackLower: !!note.stackLower,
+      partCover: note.partCover || null,
     });
   };
   for (const note of sa.notes) add(note, SA_TOP, sa.clef.sign);
   if (tb) for (const note of tb.notes) add(note, TB_TOP, tb.clef.sign);
   groupChordStems(notes);
+  placeUnisonBadges(notes);
   return {
     x,
     w,
@@ -177,16 +188,38 @@ function groupChordStems(notes) {
   for (const group of groups.values()) {
     if (group.length < 2) continue;
     const up = stemUp(group[0]);
-    const host = group.reduce((best, note) => {
+    const extreme = group.reduce((best, note) => {
       if (best.step == null) return note;
       if (note.step == null) return best;
       return (up ? note.step > best.step : note.step < best.step) ? note : best;
     });
+    const mixed = group.some((note) => note.small) && group.some((note) => !note.small && !note.unison);
+    const host = mixed ? group.find((note) => !note.small && !note.unison) || extreme : extreme;
     for (const note of group) {
       if (note === host) continue;
       note.stemless = true;
       note.beams = [];
     }
+  }
+}
+
+function placeUnisonBadges(notes) {
+  const groups = new Map();
+  for (const note of notes) {
+    if (note.isRest || !note.chordId) continue;
+    if (!groups.has(note.chordId)) groups.set(note.chordId, []);
+    groups.get(note.chordId).push(note);
+  }
+  for (const group of groups.values()) {
+    const unisons = group.filter((note) => note.unison);
+    if (!unisons.length) continue;
+    const host = group.find((note) => !note.unison && note.parts?.includes("S")) || group.find((note) => !note.unison);
+    if (!host) continue;
+    unisons.forEach((note, index) => {
+      note.x = host.x + 18;
+      note.y = host.y - 18 - index * 16;
+      note.badge = true;
+    });
   }
 }
 
@@ -196,6 +229,15 @@ function drawMusic(width, measures, notes, state, tops = [SA_TOP, TB_TOP], heigh
   for (const measure of measures) {
     if (measure.index === state.playMeasure) {
       parts.push(`<rect x="${measure.x}" y="18" width="${measure.w}" height="${height - 28}" fill="#e8f0fe"/>`);
+    }
+    if (
+      state.scope === "bars" &&
+      measure.index >= (state.selectionStart ?? -1) &&
+      measure.index <= (state.selectionEnd ?? -1)
+    ) {
+      parts.push(
+        `<rect x="${measure.x + 1}" y="20" width="${Math.max(0, measure.w - 4)}" height="${height - 32}" fill="none" stroke="#2457d6" stroke-width="2" rx="4"/>`,
+      );
     }
   }
   for (const top of tops) {
@@ -351,14 +393,34 @@ function partColor(note, state) {
   return PART_COLORS[part] || "#111";
 }
 
+const BADGE_NAME = { A: "High", T: "Low", B: "Bass", S: "Melody" };
+
 function drawNote(parts, note, state) {
   const selected = note.id === state.selectedId;
   const color = note.isRest ? "#111" : partColor(note, state);
-  if (state.showChanges && note.edited) {
+  if (state.showChanges && note.edited && !note.badge) {
     parts.push(`<circle cx="${note.x}" cy="${note.y}" r="12" fill="none" stroke="#e0a100" stroke-width="2.5"/>`);
   }
   if (selected && !note.isRest) {
     parts.push(`<circle cx="${note.x}" cy="${note.y}" r="10" fill="none" stroke="#111" stroke-width="1.8"/>`);
+  }
+  if (note.ambiguous && !note.badge) {
+    parts.push(`<circle cx="${note.x}" cy="${note.y}" r="11" fill="none" stroke="#b45309" stroke-width="1.4" stroke-dasharray="3 2"/>`);
+    if (note.stackLower && !note.partCover) {
+      parts.push(`<text x="${note.x + 12}" y="${note.y - 8}" font-size="12" font-weight="700" fill="#b45309" font-family="sans-serif">?</text>`);
+    }
+  }
+  if (note.badge) {
+    const name = BADGE_NAME[note.parts?.[0]] || "unison";
+    const label = `${name} unison`;
+    const width = Math.max(54, label.length * 6.4);
+    parts.push(
+      `<rect x="${note.x - 4}" y="${note.y - 11}" width="${width}" height="16" rx="4" fill="#fff" stroke="${color}" stroke-width="1.4"/>`,
+    );
+    parts.push(
+      `<text x="${note.x}" y="${note.y + 1}" font-size="11" font-weight="700" fill="${color}" font-family="sans-serif">${esc(label)}</text>`,
+    );
+    return;
   }
   if (note.isRest) {
     parts.push(restGlyph(note, color));
@@ -385,9 +447,11 @@ function drawNote(parts, note, state) {
     }
   }
   const open = note.type === "whole" || note.type === "half";
-  const rx = note.type === "whole" ? 7.2 : 5.8;
+  const scale = note.small ? 0.72 : 1;
+  const rx = (note.type === "whole" ? 7.2 : 5.8) * scale;
+  const ry = 4.15 * scale;
   parts.push(
-    `<ellipse cx="${note.x}" cy="${note.y}" rx="${rx}" ry="4.15" transform="rotate(-18 ${note.x} ${note.y})" fill="${open ? "#fff" : color}" stroke="${color}" stroke-width="${open ? 1.7 : 1}"/>`,
+    `<ellipse cx="${note.x}" cy="${note.y}" rx="${rx}" ry="${ry}" transform="rotate(-18 ${note.x} ${note.y})" fill="${open ? "#fff" : color}" stroke="${color}" stroke-width="${open ? 1.7 : 1}"/>`,
   );
   for (let i = 0; i < note.dots; i++) {
     const dy = note.step != null && note.step % 2 === 0 ? -STEP : 0;

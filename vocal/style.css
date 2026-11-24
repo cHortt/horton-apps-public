@@ -91,6 +91,14 @@ h1 { margin: 0; font-size: 18px; }
   color: #9b1c1c;
   font-weight: 700;
 }
+#chooser:not([hidden]) {
+  padding: 12px 16px 8px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+#chooser p { margin: 0 0 10px; max-width: 40rem; }
+#chooser-list { display: flex; flex-direction: column; gap: 8px; max-width: 40rem; }
+#chooser-list button { width: 100%; text-align: left; }
 #stage {
   flex: 1;
   min-height: 0;
@@ -141,6 +149,23 @@ h1 { margin: 0; font-size: 18px; }
 .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .parts { display: flex; gap: 4px; }
 .parts button { padding: 0; font-size: 18px; }
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+#structure button { padding: 0 10px; }
+#ambiguous {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+#ambiguous[hidden] { display: none; }
+#ambiguous p { margin: 0; font-size: 14px; font-weight: 700; }
+#ambiguous button[aria-pressed="true"] { background: #1f2933; color: #fff; border-color: #1f2933; }
+#scope-chord[aria-pressed="true"], #scope-bar[aria-pressed="true"] { background: #e8f0fe; border-color: #2457d6; }
 #changes[aria-pressed="true"] { background: #f6d56b; border-color: #d4a017; }
 .tempo { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 180px; font-size: 14px; font-weight: 700; }
 .tempo input { flex: 1; height: 44px; min-width: 0; }
