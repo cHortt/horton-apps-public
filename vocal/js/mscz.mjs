@@ -144,21 +144,26 @@ function accidentalMark(alter) {
   return "";
 }
 
-function harmonyName(xml, el) {
+function readMuseHarmony(xml, el) {
   const info = child(el, "harmonyInfo");
   const rootText = textOf(xml, child(info, "root")) || textOf(xml, child(el, "root"));
-  if (rootText === "" || !Number.isFinite(Number(rootText))) return "";
+  if (rootText === "" || !Number.isFinite(Number(rootText))) return null;
   const name = textOf(xml, child(info, "name")) || textOf(xml, child(el, "name"));
-  const bassText = textOf(xml, child(info, "bass")) || textOf(xml, child(el, "bass"));
-  let label = accidentalMark(tpcInfo(Number(rootText)).alter);
-  const step = tpcInfo(Number(rootText)).step;
-  label = step + label;
-  if (name) label += name;
+  const bassText =
+    textOf(xml, child(info, "bass")) ||
+    textOf(xml, child(el, "bass")) ||
+    textOf(xml, child(info, "base")) ||
+    textOf(xml, child(el, "base"));
+  const root = tpcInfo(Number(rootText));
+  let text = `${root.step}${accidentalMark(root.alter)}`;
+  if (name) text += name;
+  let bass = null;
   if (bassText !== "" && Number.isFinite(Number(bassText))) {
-    const bass = tpcInfo(Number(bassText));
-    label += `/${bass.step}${accidentalMark(bass.alter)}`;
+    const parsed = tpcInfo(Number(bassText));
+    bass = { step: parsed.step, alter: parsed.alter };
+    text += `/${bass.step}${accidentalMark(bass.alter)}`;
   }
-  return label;
+  return { text, root: { step: root.step, alter: root.alter }, kind: name || "", bass, degrees: [] };
 }
 
 function clefSign(type) {
@@ -343,8 +348,8 @@ function parseStaff(xml, staffEl, meta, staffIndex) {
         const tempo = Number(textOf(xml, child(el, "tempo")));
         if (Number.isFinite(tempo) && quarterBpm == null) quarterBpm = tempo * 60;
       } else if (el.tag === "Harmony") {
-        const text = harmonyName(xml, el);
-        if (text) harmonies.push({ ql: fracQl(cursorRef.frac), text });
+        const harmony = readMuseHarmony(xml, el);
+        if (harmony) harmonies.push({ ql: fracQl(cursorRef.frac), ...harmony });
       } else if (el.tag === "BarLine") {
         const kind = barKind(textOf(xml, child(el, "subtype")));
         if (!seenRef.seen && !barlines.left) barlines.left = kind;

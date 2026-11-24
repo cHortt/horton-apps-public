@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { chromaticMove, defaultMix, diatonicMove, spell, staffStep } from "../js/theory.mjs";
+import { mixState } from "../js/mix.mjs";
+import { chromaticMove, diatonicMove, spell, staffStep } from "../js/theory.mjs";
+import { dbToGain } from "../js/theory.mjs";
 import {
   editedName,
   exportScore,
@@ -97,11 +99,18 @@ test("scale steps, chromatic spelling, and rehearsal mix", () => {
   assert.equal(spell(chromaticMove({ step: "E", alter: 0, octave: 4 }, 1)), "E#4");
   assert.equal(staffStep("A", 4, "G"), 3);
   assert.equal(staffStep("A", 3, "F"), 8);
-  const mix = defaultMix("S");
-  assert.equal(mix.S, 1);
-  assert.ok(Math.abs(mix.A - 10 ** (-10 / 20)) < 1e-12);
-  assert.ok(Math.abs(mix.T - 10 ** (-10 / 20)) < 1e-12);
-  assert.ok(Math.abs(mix.P - 10 ** (-11 / 20)) < 1e-12);
+  const all = mixState("all");
+  assert.equal(all.gains.S, 1);
+  assert.equal(all.gains.A, all.gains.S);
+  assert.equal(all.gains.T, all.gains.S);
+  assert.ok(Math.abs(all.gains.P - dbToGain(-6)) < 1e-12);
+  const high = mixState("high");
+  const low = mixState("low");
+  assert.equal(low.gains.S, high.gains.S);
+  assert.equal(low.gains.P, high.gains.P);
+  assert.equal(low.mutes.A, true);
+  assert.equal(high.mutes.T, true);
+  assert.ok(Math.abs(low.gains.T - dbToGain(3)) < 1e-12);
   assert.equal(editedName("Song - A - Piano Vocal.musicxml"), "Song - A - Piano Vocal (edited).musicxml");
 });
 

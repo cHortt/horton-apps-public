@@ -12,10 +12,11 @@ function loadWorker() {
     `
     var deleted = [];
     var listeners = {};
+    var fetch = async () => ({ ok: true, clone() { return this; } });
     var caches = {
-      keys: async () => ["vocal-pitch-v1", "vocal-pitch-v2", "vocal-pitch-v3", "vocal-pitch-v4", "vocal-pitch-v5", "vocal-pitch-v6", "grocery-deals-v1", "unrelated"],
+      keys: async () => ["vocal-pitch-v1", "vocal-pitch-v2", "vocal-pitch-v3", "vocal-pitch-v4", "vocal-pitch-v5", "vocal-pitch-v6", "vocal-pitch-v7", "grocery-deals-v1", "unrelated"],
       delete: async (key) => { deleted.push(key); return true; },
-      open: async () => ({ addAll: async () => {} }),
+      open: async () => ({ addAll: async () => {}, match: async () => null, put: async () => {} }),
       match: async () => ({ ok: true }),
     };
     var self = {
@@ -44,24 +45,32 @@ test("activate deletes only vocal-prefixed caches", async () => {
     },
   });
   await pending;
-  assert.deepEqual(Array.from(worker.deleted()), ["vocal-pitch-v1", "vocal-pitch-v2", "vocal-pitch-v3", "vocal-pitch-v4", "vocal-pitch-v5"]);
-  assert.match(swSource, /\$\{CACHE_PREFIX\}pitch-v6/);
+  assert.deepEqual(Array.from(worker.deleted()), ["vocal-pitch-v1", "vocal-pitch-v2", "vocal-pitch-v3", "vocal-pitch-v4", "vocal-pitch-v5", "vocal-pitch-v6"]);
+  assert.match(swSource, /\$\{CACHE_PREFIX\}pitch-v7/);
 });
 
-test("fetch ignores requests outside the vocal scope", () => {
+test("fetch ignores requests outside the vocal scope", async () => {
   const worker = loadWorker();
   const seen = [];
+  const pending = [];
   const fire = (url) => {
     worker.listeners.fetch({
       request: { method: "GET", url },
-      respondWith() {
+      respondWith(result) {
         seen.push(url);
+        if (result?.then) pending.push(result);
       },
     });
   };
   fire("https://chortt.github.io/horton-apps-public/grocery/index.html");
   fire("https://chortt.github.io/horton-apps-public/vocal/style.css");
-  assert.deepEqual(seen, ["https://chortt.github.io/horton-apps-public/vocal/style.css"]);
+  fire("https://chortt.github.io/horton-apps-public/vocal/samples/flute/60.wav");
+  fire("https://example.com/horton-apps-public/vocal/samples/flute/60.wav");
+  assert.deepEqual(seen, [
+    "https://chortt.github.io/horton-apps-public/vocal/style.css",
+    "https://chortt.github.io/horton-apps-public/vocal/samples/flute/60.wav",
+  ]);
+  await Promise.all(pending);
 });
 
 test("the vocal worker is registered for this folder only", () => {

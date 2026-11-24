@@ -99,12 +99,3 @@ export function spellPretty(pitch) {
 export function dbToGain(db) {
   return 10 ** (db / 20);
 }
-
-// Rehearsal-track mix: the active part is full level, other voices sit 10 dB
-// under it, and the piano sits 11 dB under it.
-export function defaultMix(active) {
-  const voice = dbToGain(-10);
-  const mix = { S: voice, A: voice, T: voice, B: voice, P: dbToGain(-11) };
-  if (active in mix) mix[active] = 1;
-  return mix;
-}

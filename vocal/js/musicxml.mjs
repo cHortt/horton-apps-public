@@ -239,17 +239,34 @@ function accidentalMark(alterText) {
   return "";
 }
 
-function harmonyLabel(xml, el) {
+function readHarmony(xml, el) {
   const root = child(el, "root");
   const kind = child(el, "kind");
   const bass = child(el, "bass");
-  let label = textOf(xml, child(root, "root-step")) + accidentalMark(textOf(xml, child(root, "root-alter")));
+  const step = textOf(xml, child(root, "root-step"));
+  if (!step) return null;
+  const alter = Number(textOf(xml, child(root, "root-alter")) || 0);
   const printed = kind?.attrs.text ?? "";
-  if (printed) label += printed;
+  const kindText = textOf(xml, kind) || printed;
+  let text = step + accidentalMark(alter);
+  if (printed) text += printed;
+  let bassPitch = null;
   if (bass) {
-    label += "/" + textOf(xml, child(bass, "bass-step")) + accidentalMark(textOf(xml, child(bass, "bass-alter")));
+    const bassStep = textOf(xml, child(bass, "bass-step"));
+    const bassAlter = Number(textOf(xml, child(bass, "bass-alter")) || 0);
+    if (bassStep) {
+      bassPitch = { step: bassStep, alter: bassAlter };
+      text += `/${bassStep}${accidentalMark(bassAlter)}`;
+    }
   }
-  return label;
+  const degrees = el.children
+    .filter((item) => item.tag === "degree")
+    .map((degree) => ({
+      value: Number(textOf(xml, child(degree, "degree-value")) || 0),
+      alter: Number(textOf(xml, child(degree, "degree-alter")) || 0),
+      type: textOf(xml, child(degree, "degree-type")),
+    }));
+  return { text, root: { step, alter }, kind: kindText, bass: bassPitch, degrees };
 }
 
 function readPitch(xml, pitchEl) {
@@ -341,7 +358,8 @@ export function parseScore(xml) {
             cursor += Number(textOf(xml, child(el, "duration")) || 0) / divisions;
           } else if (el.tag === "harmony" && role !== "piano") {
             const offset = Number(textOf(xml, child(el, "offset")) || 0) / divisions;
-            harmonies.push({ ql: cursor + offset, text: harmonyLabel(xml, el) });
+            const harmony = readHarmony(xml, el);
+            if (harmony) harmonies.push({ ql: cursor + offset, ...harmony });
           } else if (el.tag === "barline") {
             const loc = el.attrs.location || "right";
             const repeat = child(el, "repeat");
@@ -804,38 +822,114 @@ export function editedName(filename) {
   return `${name} (edited).musicxml`;
 }
 
+function measureLength(measure) {
+  return measure.beats * (4 / measure.beatType);
+}
+
+export function linearVisits(measures) {
+  const visits = [];
+  let origin = 0;
+  for (let index = 0; index < measures.length; index++) {
+    const len = measureLength(measures[index]);
+    visits.push({ measure: measures[index], index, origin, len, writtenOrigin: origin });
+    origin += len;
+  }
+  return { visits, endQl: origin };
+}
+
+// Play each written repeat once. A backward repeat with no forward repeat
+// returns to the start. The first pass keeps the written quarter positions.
+export function measureVisits(measures) {
+  const written = linearVisits(measures);
+  const visits = [];
+  let i = 0;
+  let origin = 0;
+  const taken = new Set();
+  let guard = 0;
+  const limit = Math.max(8, measures.length * 4);
+  while (i < measures.length && guard++ < limit) {
+    const info = written.visits[i];
+    visits.push({ measure: info.measure, index: i, origin, len: info.len, writtenOrigin: info.writtenOrigin });
+    if (info.measure.barlines?.right === "repeat-backward" && !taken.has(i)) {
+      taken.add(i);
+      let start = 0;
+      for (let j = i; j >= 0; j--) {
+        if (measures[j].barlines?.left === "repeat-forward") {
+          start = j;
+          break;
+        }
+      }
+      origin += info.len;
+      i = start;
+      continue;
+    }
+    origin += info.len;
+    i += 1;
+  }
+  return { visits, endQl: origin, writtenEndQl: written.endQl };
+}
+
+export function audioQlFromWritten(visits, writtenQl) {
+  const hit = visits.find((visit) => writtenQl >= visit.writtenOrigin - 1e-6 && writtenQl < visit.writtenOrigin + visit.len - 1e-6);
+  if (!hit) return writtenQl;
+  return hit.origin + (writtenQl - hit.writtenOrigin);
+}
+
+export function writtenQlFromAudio(visits, audioQl) {
+  const hit = visits.find((visit) => audioQl >= visit.origin - 1e-6 && audioQl < visit.origin + visit.len - 1e-6);
+  if (!hit) {
+    const last = visits[visits.length - 1];
+    if (!last) return audioQl;
+    return last.writtenOrigin + (audioQl - last.origin);
+  }
+  return hit.writtenOrigin + (audioQl - hit.origin);
+}
+
+export function playbackTimeline(score) {
+  const part = score.parts.find((item) => item.role !== "piano") || score.parts[0];
+  return measureVisits(part?.measures || []);
+}
+
 export function playbackEvents(score) {
+  const timeline = playbackTimeline(score);
   const events = [];
   for (const part of score.parts) {
-    if (part.role === "piano") events.push(...eventsFor(part, "P"));
+    if (part.role === "piano") events.push(...eventsFor(part, "P", timeline));
     else if (part.role === "SA" || part.role === "extra") {
       // A one-staff MuseScore score keeps melody and both harmony parts here.
-      events.push(...eventsFor(part, "S"));
-      events.push(...eventsFor(part, "A"));
-      events.push(...eventsFor(part, "T"));
-      events.push(...eventsFor(part, "B"));
+      events.push(...eventsFor(part, "S", timeline));
+      events.push(...eventsFor(part, "A", timeline));
+      events.push(...eventsFor(part, "T", timeline));
+      events.push(...eventsFor(part, "B", timeline));
     } else if (part.role === "TB") {
-      events.push(...eventsFor(part, "T"));
-      events.push(...eventsFor(part, "B"));
+      events.push(...eventsFor(part, "T", timeline));
+      events.push(...eventsFor(part, "B", timeline));
     }
   }
   events.sort((a, b) => a.ql - b.ql || a.channel.localeCompare(b.channel));
   return events;
 }
 
-function eventsFor(part, channel) {
+export function eventsOn(part, channel, timeline) {
+  return eventsFor(part, channel, timeline);
+}
+
+function eventsFor(part, channel, timeline) {
   const out = [];
   const hanging = new Map();
-  let origin = 0;
-  for (const measure of part.measures) {
-    const measureLen = measure.beats * (4 / measure.beatType);
+  let prevIndex = Infinity;
+  for (const visit of timeline.visits) {
+    const measure = part.measures[visit.index];
+    if (!measure) continue;
+    if (visit.index < prevIndex) hanging.clear();
+    prevIndex = visit.index;
     const notes = measure.notes
       .filter((n) => channel === "P" || n.parts.includes(channel))
       .filter((n) => n.pitch && !n.grace)
       .slice()
       .sort((a, b) => a.startQl - b.startQl || a.index - b.index);
     for (const note of notes) {
-      const start = origin + note.startQl;
+      const start = visit.origin + note.startQl;
       const end = start + note.durQl;
       const midi = pitchToMidi(note.pitch);
       const key = `${note.voice}|${midi}`;
@@ -849,7 +943,6 @@ function eventsFor(part, channel) {
       out.push(event);
       if (note.tieStart) hanging.set(key, event);
     }
-    origin += measureLen;
   }
   return out;
 }

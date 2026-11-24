@@ -17,6 +17,7 @@
   </div>
   <div class="filebtns">
     <label for="file" id="open">Open<input id="file" type="file"></label>
+    <label for="piano-file" id="piano-open">Piano<input id="piano-file" type="file"></label>
     <button type="button" id="example">Example</button>
     <button type="button" id="export" disabled>Export</button>
   </div>
@@ -31,18 +32,11 @@
   <div id="gutter"></div>
   <div id="scroll">
     <div id="empty">
-      <p>Open a Piano Vocal MusicXML file or a MuseScore 3 or 4 file (.mscz). Only the vocal staves are shown. Chord symbols stay as written, and the piano plays along without being edited.</p>
+      <p>Open a Piano Vocal MusicXML file or a MuseScore 3 or 4 file (.mscz). Only the vocal staves are shown. Chord symbols stay as written. Use Piano to add the piano part, or the chord symbols play as simple chords.</p>
       <p>Nothing is uploaded. The file stays on this device.</p>
     </div>
   </div>
 </div>
-<section id="mixer" hidden>
-  <div class="chan"><span>Soprano</span><input data-gain="S" type="range" min="0" max="100" value="100" aria-label="Soprano volume"><button type="button" class="mute" data-mute="S" aria-pressed="false">Mute</button></div>
-  <div class="chan"><span>Alto</span><input data-gain="A" type="range" min="0" max="100" value="32" aria-label="Alto volume"><button type="button" class="mute" data-mute="A" aria-pressed="false">Mute</button></div>
-  <div class="chan"><span>Tenor</span><input data-gain="T" type="range" min="0" max="100" value="32" aria-label="Tenor volume"><button type="button" class="mute" data-mute="T" aria-pressed="false">Mute</button></div>
-  <div class="chan"><span>Bass</span><input data-gain="B" type="range" min="0" max="100" value="32" aria-label="Bass volume"><button type="button" class="mute" data-mute="B" aria-pressed="false">Mute</button></div>
-  <div class="chan"><span>Piano</span><input data-gain="P" type="range" min="0" max="100" value="28" aria-label="Piano volume"><button type="button" class="mute" data-mute="P" aria-pressed="false">Mute</button></div>
-</section>
 <div class="bar">
   <p id="readout">Open a Piano Vocal file</p>
   <div class="row">
@@ -80,7 +74,14 @@
     <button type="button" id="redo" disabled>Redo</button>
     <button type="button" id="changes" aria-pressed="false">Show changes</button>
     <button type="button" id="play" disabled>Play</button>
-    <button type="button" id="mixer-btn" aria-expanded="false" aria-controls="mixer">Mix</button>
+    <label class="mixpick">Mix
+      <select id="mix" aria-label="Mix">
+        <option value="all">All Parts</option>
+        <option value="melody">Melody</option>
+        <option value="high">High</option>
+        <option value="low">Low</option>
+      </select>
+    </label>
     <label class="tempo">Tempo <input id="tempo" type="range" min="40" max="160" value="68" aria-label="Tempo"> <span id="bpm">68</span></label>
   </div>
 </div>
