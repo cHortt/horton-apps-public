@@ -13,7 +13,7 @@ function loadWorker() {
     var deleted = [];
     var listeners = {};
     var caches = {
-      keys: async () => ["vocal-pitch-v1", "vocal-pitch-v2", "vocal-pitch-v3", "vocal-pitch-v4", "vocal-pitch-v5", "grocery-deals-v1", "unrelated"],
+      keys: async () => ["vocal-pitch-v1", "vocal-pitch-v2", "vocal-pitch-v3", "vocal-pitch-v4", "vocal-pitch-v5", "vocal-pitch-v6", "grocery-deals-v1", "unrelated"],
       delete: async (key) => { deleted.push(key); return true; },
       open: async () => ({ addAll: async () => {} }),
       match: async () => ({ ok: true }),
@@ -44,8 +44,8 @@ test("activate deletes only vocal-prefixed caches", async () => {
     },
   });
   await pending;
-  assert.deepEqual(Array.from(worker.deleted()), ["vocal-pitch-v1", "vocal-pitch-v2", "vocal-pitch-v3", "vocal-pitch-v4"]);
-  assert.match(swSource, /\$\{CACHE_PREFIX\}pitch-v5/);
+  assert.deepEqual(Array.from(worker.deleted()), ["vocal-pitch-v1", "vocal-pitch-v2", "vocal-pitch-v3", "vocal-pitch-v4", "vocal-pitch-v5"]);
+  assert.match(swSource, /\$\{CACHE_PREFIX\}pitch-v6/);
 });
 
 test("fetch ignores requests outside the vocal scope", () => {

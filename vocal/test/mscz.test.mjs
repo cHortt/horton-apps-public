@@ -233,13 +233,19 @@ test("tpc spelling matches sounding pitch", () => {
   assert.equal(editedName("Song.MSCZ"), "Song (edited).mscz");
 });
 
-test("MuseScore 3 and older files are rejected", () => {
-  const reject = (xml) => {
-    assert.throws(() => openMscz(pack(xml)), /MuseScore 3 or older/);
-  };
-  reject(`<?xml version="1.0" encoding="UTF-8"?>\n<museScore version="3.02"><Score></Score></museScore>\n`);
-  reject(`<?xml version="1.0" encoding="UTF-8"?>\n<museScore version="2.06"><Score></Score></museScore>\n`);
-  reject(`<?xml version="1.0" encoding="UTF-8"?>\n<museScore version="4.00"><programVersion>3.6.2</programVersion><Score></Score></museScore>\n`);
+test("MuseScore 2 and older files are rejected", () => {
+  assert.throws(
+    () => openMscz(pack(`<?xml version="1.0" encoding="UTF-8"?>\n<museScore version="2.06"><Score></Score></museScore>\n`)),
+    /MuseScore 2 or older/,
+  );
+  assert.throws(
+    () => openMscz(pack(`<?xml version="1.0" encoding="UTF-8"?>\n<museScore version="3.02"><Score></Score></museScore>\n`)),
+    /no staff with notes/,
+  );
+  const writtenByMs3 = pack(
+    `<?xml version="1.0" encoding="UTF-8"?>\n<museScore version="4.00"><programVersion>3.6.2</programVersion><Score><Part id="1"><Staff><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff><trackName>Vocals</trackName><Instrument id="voice"><instrumentId>voice.ensemble</instrumentId></Instrument></Part><Staff id="1"><Measure><voice><Chord><durationType>quarter</durationType><Note><pitch>60</pitch><tpc>14</tpc></Note></Chord></voice></Measure></Staff></Score></museScore>\n`,
+  );
+  assert.equal(openMscz(writtenByMs3).parts[0].measures[0].notes[0].parts[0], "S");
 });
 
 test("one-staff chords map top to bottom as S, A, and T", () => {
