@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import { zipSync } from "../js/fflate.mjs";
 import { mixState } from "../js/mix.mjs";
 import { openMscz } from "../js/mscz.mjs";
 import { parseScore, playbackEvents, playbackTimeline, setPitch } from "../js/musicxml.mjs";
 import { alignPianoEvents, blockChordMidis, preparePlayback } from "../js/playback.mjs";
-import { INSTRUMENTS, selectVoice } from "../js/samples.mjs";
+import { renderVoiceTone } from "../js/voice.mjs";
 import { dbToGain } from "../js/theory.mjs";
 
 function voiceScore(measures, name = "Voice") {
@@ -57,61 +56,12 @@ test("rehearsal mixes keep melody and piano aligned between High and Low", () =>
   assert.equal(low.mutes.A, true);
   assert.equal(high.mutes.B, true);
   assert.equal(low.mutes.B, true);
-  assert.ok(Math.abs(low.gains.T - dbToGain(3)) < 1e-12);
+  assert.equal(low.gains.T, 1);
+  assert.equal(low.gains.T, high.gains.A);
   assert.ok(Math.abs(melody.gains.P - dbToGain(-6)) < 1e-12);
 });
 
-test("the sax reaches G3 and the flute has no octave floor", () => {
-  assert.equal(INSTRUMENTS.flute.floor, null);
-  assert.equal(selectVoice(INSTRUMENTS.flute, 55).sounded, 55);
-  assert.ok(selectVoice(INSTRUMENTS.flute, 55).rate < 1);
-  assert.equal(selectVoice(INSTRUMENTS.flute, 53).sounded, 53);
-  assert.ok(INSTRUMENTS.sax.notes.some((note) => note.midi <= 55));
-  assert.equal(INSTRUMENTS.piano.oneShot, true);
-});
-
 const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-
-function readWav(url) {
-  const file = readFileSync(new URL(`../${url}`, import.meta.url));
-  const view = new DataView(file.buffer, file.byteOffset, file.byteLength);
-  let offset = 12;
-  let rate = 44100;
-  let dataAt = 0;
-  let dataBytes = 0;
-  while (offset + 8 <= file.length) {
-    const id = file.toString("ascii", offset, offset + 4);
-    const size = view.getUint32(offset + 4, true);
-    if (id === "fmt ") rate = view.getUint32(offset + 12, true);
-    if (id === "data") {
-      dataAt = offset + 8;
-      dataBytes = size;
-      break;
-    }
-    offset += 8 + size + (size & 1);
-  }
-  const samples = new Float32Array(dataBytes / 2);
-  for (let i = 0; i < samples.length; i++) samples[i] = view.getInt16(dataAt + i * 2, true) / 32768;
-  return { rate, samples };
-}
-
-// Offline stand-in for a buffer source: play the chosen flute sample at the
-// engine's playback rate and read the steady tone.
-function renderVoice(voice, seconds = 0.45) {
-  const { rate, samples } = readWav(voice.note.url);
-  const start = Math.min(Math.floor(rate * 0.12), Math.max(0, samples.length - 8));
-  const out = new Float32Array(Math.floor(seconds * rate));
-  for (let i = 0; i < out.length; i++) {
-    const pos = start + i * voice.rate;
-    const i0 = Math.floor(pos);
-    const i1 = Math.min(i0 + 1, samples.length - 1);
-    const frac = pos - i0;
-    const a = i0 >= 0 && i0 < samples.length ? samples[i0] : 0;
-    const b = i1 >= 0 ? samples[i1] : a;
-    out[i] = a + (b - a) * frac;
-  }
-  return { samples: out, rate };
-}
 
 function fundamentalHz(samples, sampleRate) {
   const width = Math.min(samples.length, Math.floor(sampleRate * 0.32));
@@ -156,7 +106,7 @@ function fundamentalHz(samples, sampleRate) {
   return sampleRate / (bestLag + shift);
 }
 
-test("melody notes from G3 through C5 play at the written pitch", () => {
+test("synth melody notes from G3 through C5 play at the written pitch", () => {
   const bodies = [];
   for (let midi = 55; midi <= 72; midi++) {
     const name = NAMES[midi % 12];
@@ -177,9 +127,7 @@ test("melody notes from G3 through C5 play at the written pitch", () => {
   );
   let previous = 0;
   for (const event of melody) {
-    const voice = selectVoice(INSTRUMENTS.flute, event.midi);
-    assert.equal(voice.sounded, event.midi);
-    const heard = fundamentalHz(renderVoice(voice).samples, 44100);
+    const heard = fundamentalHz(renderVoiceTone(event.midi, 44100), 44100);
     const written = 440 * 2 ** ((event.midi - 69) / 12);
     const cents = 1200 * Math.log2(heard / written);
     const octaveUp = 1200 * Math.log2(heard / (written * 2));

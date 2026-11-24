@@ -40,7 +40,7 @@ APPLETS = {
         r"fixtures/[a-z0-9-]+\.musicxml",
         r"test/[a-z0-9-]+\.test\.mjs",
         r"SAMPLES\.md",
-        r"samples/(?:flute|oboe|sax|piano)/[0-9]+\.(?:wav|mp3)",
+        r"samples/piano/[0-9]+\.mp3",
     ],
     # Trip guide: one page and its rendered PDFs.
     "smokies-trip": [
