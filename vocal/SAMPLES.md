@@ -4,7 +4,7 @@ The vocal editor plays sampled instruments instead of a single synthesizer tone.
 
 | Instrument | Part | Files | About |
 |---|---|---|---|
-| Flute | Melody | 4 notes, 185 KB | Lowest sample is C4. Melody notes below C4 play one octave higher. |
+| Flute | Melody | 4 notes, 185 KB | Recorded from C4 up. F3–B3 play the C4 recording at the written pitch, so the melody never jumps an octave. |
 | Oboe | High | 4 notes, 186 KB | |
 | Tenor sax | Low | 5 notes, 233 KB | Reaches G3. |
 | Piano | Piano | 23 notes, 560 KB | |
@@ -20,7 +20,7 @@ VS Chamber Orchestra: Community Edition (VSCO 2 CE), recorded by Sam Gossner and
 - Oboe: `Woodwinds/Oboe/Vib`, softer layer
 - License: [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 
-These notes were trimmed, given a short sustain loop, level-matched, and saved as mono 16-bit WAV at 44.1 kHz.
+These notes were trimmed, given a short sustain loop, level-matched, and saved as mono 16-bit WAV at 44.1 kHz. Melody notes from F3 to B3 use the C4 flute slowed to the written pitch. The tone stays a flute, a little darker, in the same way a low flute is darker than a middle C. It does not become the oboe or the tenor sax.
 
 ## Tenor saxophone
 
