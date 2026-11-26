@@ -20,7 +20,8 @@ interface RawWingInputSlot {
   mute?: boolean;
   col?: number;
   icon?: number;
-  rmt?: boolean;
+  tags?: string;
+  rmt?: boolean | string;
 }
 
 interface RawWingOutputSlot {
@@ -31,6 +32,8 @@ interface RawWingOutputSlot {
 interface RawWingChannelStrip {
   name?: string;
   clink?: boolean;
+  col?: number;
+  tags?: string;
   in?: {
     conn?: {
       grp?: string;
@@ -61,6 +64,7 @@ interface RawWingBus {
   busmono?: boolean;
   mute?: boolean;
   col?: number;
+  tags?: string;
 }
 
 interface RawWingMonCfg {
@@ -256,6 +260,7 @@ export function parseWingSnap(
       mono: Boolean(b.busmono),
       muted: Boolean(b.mute),
       colorIndex: b.col,
+      tags: (b.tags ?? '').trim() || undefined,
       outputs: [],
     });
   }
@@ -270,6 +275,7 @@ export function parseWingSnap(
       mono: false,
       muted: Boolean(m.mute),
       colorIndex: m.col,
+      tags: (m.tags ?? '').trim() || undefined,
       outputs: [],
     });
   }
@@ -284,6 +290,7 @@ export function parseWingSnap(
       mono: false,
       muted: Boolean(m.mute),
       colorIndex: m.col,
+      tags: (m.tags ?? '').trim() || undefined,
       outputs: [],
     });
   }
@@ -372,6 +379,8 @@ export function parseWingSnap(
         rawName,
         resolvedName,
         clink,
+        colorIndex: ch.col,
+        tags: (ch.tags ?? '').trim() || undefined,
         sourceGroup: srcGrp,
         sourceSlot: srcSlot,
         altSourceGroup: conn?.altgrp && conn.altgrp !== 'OFF' ? conn.altgrp : undefined,
@@ -460,6 +469,7 @@ export function parseWingSnap(
         polarityInverted: Boolean(v.pol),
         muted: Boolean(v.mute),
         colorIndex: v.col,
+        tags: (v.tags ?? '').trim() || undefined,
         consoleChannel: strip ? `${strip.kind.toUpperCase()} ${strip.index}` : undefined,
         channelStripName:
           strip && strip.rawName && strip.rawName !== name ? strip.rawName : undefined,

@@ -15,15 +15,22 @@ import { computeSnapMergeDiff, resolveTargetConsoleId } from '../../parser/merge
 
 interface SnapImportModalProps {
   rig: RigDocument;
+  initialTargetConsoleId?: string;
   onClose: () => void;
-  onApplyMerge: (parsed: ParsedWingSnapshot, targetConsoleId?: string) => void;
+  onApplyMerge: (parsed: ParsedWingSnapshot, targetConsoleId?: string, rawSnapJson?: string) => void;
 }
 
-export function SnapImportModal({ rig, onClose, onApplyMerge }: SnapImportModalProps) {
+export function SnapImportModal({
+  rig,
+  initialTargetConsoleId,
+  onClose,
+  onApplyMerge,
+}: SnapImportModalProps) {
   const [parsed, setParsed] = useState<ParsedWingSnapshot | null>(null);
+  const [rawSnapText, setRawSnapText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [selectedTargetId, setSelectedTargetId] = useState<string>('');
+  const [selectedTargetId, setSelectedTargetId] = useState<string>(initialTargetConsoleId ?? '');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const consoleNodes = useMemo(
@@ -37,10 +44,12 @@ export function SnapImportModal({ rig, onClose, onApplyMerge }: SnapImportModalP
       const text = await file.text();
       const result = parseWingSnap(text, { fileName: file.name });
       setParsed(result);
-      const autoTarget = resolveTargetConsoleId(rig, result);
+      setRawSnapText(text);
+      const autoTarget = initialTargetConsoleId || resolveTargetConsoleId(rig, result);
       setSelectedTargetId(autoTarget);
     } catch (err) {
       setParsed(null);
+      setRawSnapText(null);
       setError(err instanceof Error ? err.message : 'Failed to parse .snap file.');
     }
   };
@@ -54,7 +63,7 @@ export function SnapImportModal({ rig, onClose, onApplyMerge }: SnapImportModalP
   const handleApply = () => {
     if (!parsed) return;
     const targetId = selectedTargetId === '__new__' ? parsed.consoleNode.id : selectedTargetId || undefined;
-    onApplyMerge(parsed, targetId);
+    onApplyMerge(parsed, targetId, rawSnapText ?? undefined);
     onClose();
   };
 

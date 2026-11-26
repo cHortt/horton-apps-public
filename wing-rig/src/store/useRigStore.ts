@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   BusAnnotation,
   ChannelAnnotation,
@@ -11,21 +11,37 @@ import type {
   TrunkAnnotation,
   TrunkConnection,
 } from '../schema/rig';
+import type {
+  ConsoleBaselineMeta,
+  ConsoleBaselineRecord,
+  ConsoleLinkConfig,
+  StagedPatchEntry,
+} from '../schema/patch';
 import { traceSignal, validateRigDocument } from '../schema/helpers';
 import { createMockRig } from '../schema/mockRig';
 import { applySnapMerge, type SnapMergeDiff } from '../parser/merge';
-import type { ParsedWingSnapshot } from '../parser/wingSnapParser';
+import { parseWingSnap, type ParsedWingSnapshot } from '../parser/wingSnapParser';
+import { applyPatchOpsToRawSnap, buildDefaultSnapExportName } from '../parser/snapPatcher';
+import { inferConsoleLinkConfig, verifyRigPaths } from '../parser/snapVerifier';
+import {
+  clearAllBaselines,
+  deleteBaselineRecord,
+  loadAllBaselines,
+  saveBaselineRecord,
+} from './snapBaselineDb';
 
 // Strict applet isolation: all localStorage keys MUST be prefixed with "wing-rig:"
 export const STORAGE_KEY_RIG = 'wing-rig:document:v1';
 export const STORAGE_KEY_PREFS = 'wing-rig:prefs:v1';
+export const STORAGE_KEY_STAGED = 'wing-rig:staged-patches:v1';
+export const STORAGE_KEY_LINK = 'wing-rig:console-link:v1';
 
 export type SelectionState =
   | { type: 'node'; id: string }
   | { type: 'trunk'; id: string }
   | null;
 
-export type AppViewMode = 'canvas' | 'print';
+export type AppViewMode = 'canvas' | 'patch' | 'print';
 
 function loadInitialRig(): RigDocument {
   if (typeof window === 'undefined') return createMockRig();
@@ -43,13 +59,74 @@ function loadInitialRig(): RigDocument {
   return createMockRig();
 }
 
+function loadInitialStaged(): StagedPatchEntry[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY_STAGED);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed as StagedPatchEntry[];
+    }
+  } catch {
+    // Ignore malformed staging cache
+  }
+  return [];
+}
+
+function loadInitialLinkConfig(rig: RigDocument): ConsoleLinkConfig {
+  const inferred = inferConsoleLinkConfig(rig);
+  if (typeof window === 'undefined') return inferred;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY_LINK);
+    if (!raw) return inferred;
+    const parsed = JSON.parse(raw) as Partial<ConsoleLinkConfig>;
+    const nodeIds = new Set(rig.nodes.filter((n) => n.kind === 'console').map((n) => n.id));
+    if (parsed.stageConsoleId && nodeIds.has(parsed.stageConsoleId)) {
+      return {
+        stageConsoleId: parsed.stageConsoleId,
+        fohConsoleId:
+          parsed.fohConsoleId && nodeIds.has(parsed.fohConsoleId)
+            ? parsed.fohConsoleId
+            : inferred.fohConsoleId,
+        stageSplitPort: parsed.stageSplitPort ?? inferred.stageSplitPort,
+        fohReceivePort: parsed.fohReceivePort ?? inferred.fohReceivePort,
+        headampOwnerConsoleId:
+          parsed.headampOwnerConsoleId && nodeIds.has(parsed.headampOwnerConsoleId)
+            ? parsed.headampOwnerConsoleId
+            : parsed.stageConsoleId,
+      };
+    }
+  } catch {
+    // Fall back to inferred link
+  }
+  return inferred;
+}
+
 export function useRigStore() {
   const [rig, setRig] = useState<RigDocument>(loadInitialRig);
   // Volunteer-First UX: always default to Read-Only Mode on startup
   const [editMode, setEditMode] = useState<boolean>(false);
+  const [patchUnlocked, setPatchUnlocked] = useState<boolean>(false);
   const [selection, setSelection] = useState<SelectionState>(null);
   const [trace, setTrace] = useState<TraceResult | null>(null);
   const [view, setView] = useState<AppViewMode>('canvas');
+
+  // Raw lossless .snap baselines (persisted in IndexedDB wing-rig:snapshots:v1)
+  const [baselines, setBaselines] = useState<Record<string, ConsoleBaselineRecord>>({});
+  const [stagedPatches, setStagedPatches] = useState<StagedPatchEntry[]>(loadInitialStaged);
+  const [linkConfig, setLinkConfig] = useState<ConsoleLinkConfig>(() => loadInitialLinkConfig(rig));
+
+  // Hydrate raw .snap baselines from IndexedDB on mount
+  useEffect(() => {
+    let active = true;
+    void loadAllBaselines().then((loaded) => {
+      if (active) setBaselines(loaded);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -58,6 +135,90 @@ export function useRigStore() {
       // Ignore storage quota errors in restricted browsing modes
     }
   }, [rig]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY_STAGED, JSON.stringify(stagedPatches));
+    } catch {
+      // Ignore storage errors
+    }
+  }, [stagedPatches]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY_LINK, JSON.stringify(linkConfig));
+    } catch {
+      // Ignore storage errors
+    }
+  }, [linkConfig]);
+
+  // Keep linkConfig valid if consoles are added/removed
+  useEffect(() => {
+    const consoleIds = new Set(rig.nodes.filter((n) => n.kind === 'console').map((n) => n.id));
+    if (consoleIds.size === 0) return;
+    if (
+      !consoleIds.has(linkConfig.stageConsoleId) ||
+      (linkConfig.fohConsoleId && !consoleIds.has(linkConfig.fohConsoleId))
+    ) {
+      setLinkConfig(inferConsoleLinkConfig(rig));
+    }
+  }, [rig, linkConfig]);
+
+  // Lightweight baseline metadata (keeps raw .snap strings out of UI components)
+  const baselineMetas = useMemo<Record<string, ConsoleBaselineMeta>>(() => {
+    const out: Record<string, ConsoleBaselineMeta> = {};
+    for (const [id, rec] of Object.entries(baselines)) {
+      out[id] = {
+        consoleNodeId: rec.consoleNodeId,
+        fileName: rec.fileName,
+        creatorName: rec.creatorName,
+        snapshotType: rec.snapshotType,
+        creatorVersion: rec.creatorVersion,
+        byteLength: rec.byteLength,
+        importedAt: rec.importedAt,
+      };
+    }
+    return out;
+  }, [baselines]);
+
+  // Live Effective Rig: overlays staged .snap patches onto the committed RigDocument in memory
+  // so the Schematic Canvas, Side Inspector, Search, and Click-to-Trace verify staged paths live!
+  const effectiveRig = useMemo<RigDocument>(() => {
+    if (stagedPatches.length === 0) return rig;
+
+    const opsByConsole = new Map<string, StagedPatchEntry[]>();
+    for (const entry of stagedPatches) {
+      const list = opsByConsole.get(entry.consoleNodeId) ?? [];
+      list.push(entry);
+      opsByConsole.set(entry.consoleNodeId, list);
+    }
+
+    let current = rig;
+    for (const [consoleId, entries] of opsByConsole) {
+      const baseline = baselines[consoleId];
+      if (!baseline) continue;
+      try {
+        const patchedRaw = applyPatchOpsToRawSnap(
+          baseline.rawJson,
+          entries.map((e) => e.op),
+        );
+        const parsed = parseWingSnap(patchedRaw, {
+          fileName: baseline.fileName,
+          consoleNodeId: consoleId,
+          importedAt: baseline.importedAt,
+        });
+        current = applySnapMerge(current, parsed, consoleId).rig;
+      } catch {
+        // If a baseline fails to parse, leave committed state intact
+      }
+    }
+    return current;
+  }, [rig, baselines, stagedPatches]);
+
+  const auditIssues = useMemo(
+    () => verifyRigPaths(effectiveRig, linkConfig, baselineMetas, stagedPatches),
+    [effectiveRig, linkConfig, baselineMetas, stagedPatches],
+  );
 
   // Esc clears active trace cleanly
   useEffect(() => {
@@ -84,10 +245,24 @@ export function useRigStore() {
 
   const runTrace = useCallback(
     (target: TraceTarget) => {
-      const result = traceSignal(rig, target);
+      const result = traceSignal(effectiveRig, target);
       setTrace(result);
     },
-    [rig],
+    [effectiveRig],
+  );
+
+  const traceOnSchematic = useCallback(
+    (target: TraceTarget) => {
+      const result = traceSignal(effectiveRig, target);
+      setTrace(result);
+      if (target.trunkId) {
+        setSelection({ type: 'trunk', id: target.trunkId });
+      } else if (target.nodeId) {
+        setSelection({ type: 'node', id: target.nodeId });
+      }
+      setView('canvas');
+    },
+    [effectiveRig],
   );
 
   const clearTrace = useCallback(() => {
@@ -261,15 +436,139 @@ export function useRigStore() {
   }, []);
 
   const applySnapshot = useCallback(
-    (parsed: ParsedWingSnapshot, targetConsoleId?: string): SnapMergeDiff => {
+    (parsed: ParsedWingSnapshot, targetConsoleId?: string, rawSnapJson?: string): SnapMergeDiff => {
       const merged = applySnapMerge(rig, parsed, targetConsoleId);
       setRig(merged.rig);
-      setSelection({ type: 'node', id: merged.diff.targetConsoleNodeId });
+      const resolvedId = merged.diff.targetConsoleNodeId;
+      setSelection({ type: 'node', id: resolvedId });
       setTrace(null);
+
+      // Persist raw .snap baseline in IndexedDB for lossless Patch Studio editing & export
+      if (rawSnapJson) {
+        const record: ConsoleBaselineRecord = {
+          consoleNodeId: resolvedId,
+          fileName: parsed.metadata.fileName,
+          creatorName: parsed.metadata.creatorName,
+          snapshotType: parsed.metadata.snapshotType,
+          creatorVersion: parsed.metadata.creatorVersion,
+          byteLength: rawSnapJson.length,
+          importedAt: parsed.metadata.importedAt,
+          rawJson: rawSnapJson,
+        };
+        setBaselines((prev) => ({ ...prev, [resolvedId]: record }));
+        void saveBaselineRecord(record);
+        // Clear older staged patches targeting this console since a fresh baseline was imported
+        setStagedPatches((prev) => prev.filter((p) => p.consoleNodeId !== resolvedId));
+      }
+
       return merged.diff;
     },
     [rig],
   );
+
+  // Patch Studio staging & export actions
+  const stagePatches = useCallback((entries: StagedPatchEntry[]) => {
+    if (entries.length === 0) return;
+    setStagedPatches((prev) => [...prev, ...entries]);
+  }, []);
+
+  const removeStagedPatch = useCallback((patchId: string) => {
+    setStagedPatches((prev) => prev.filter((p) => p.id !== patchId));
+  }, []);
+
+  const undoLastStagedPatch = useCallback(() => {
+    setStagedPatches((prev) => prev.slice(0, -1));
+  }, []);
+
+  const discardStagedPatches = useCallback((consoleNodeId?: string) => {
+    if (!consoleNodeId) {
+      setStagedPatches([]);
+    } else {
+      setStagedPatches((prev) => prev.filter((p) => p.consoleNodeId !== consoleNodeId));
+    }
+  }, []);
+
+  const updateLinkConfig = useCallback((patch: Partial<ConsoleLinkConfig>) => {
+    setLinkConfig((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const exportPatchedSnap = useCallback(
+    (consoleNodeId: string, customFileName?: string): { ok: true; fileName: string } | { ok: false; error: string } => {
+      const baseline = baselines[consoleNodeId];
+      if (!baseline) {
+        return { ok: false, error: 'No .snap baseline loaded for this console.' };
+      }
+      try {
+        const consoleOps = stagedPatches
+          .filter((p) => p.consoleNodeId === consoleNodeId)
+          .map((p) => p.op);
+        const patchedJson = applyPatchOpsToRawSnap(baseline.rawJson, consoleOps);
+        const rawName = (customFileName ?? '').trim() || buildDefaultSnapExportName(baseline.fileName);
+        const fileName = /\.snap$/i.test(rawName) ? rawName : `${rawName}.snap`;
+
+        const blob = new Blob([patchedJson], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.click();
+        URL.revokeObjectURL(url);
+        return { ok: true, fileName };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : 'Failed to serialize patched .snap.',
+        };
+      }
+    },
+    [baselines, stagedPatches],
+  );
+
+  const commitConsoleBaseline = useCallback(
+    (consoleNodeId: string, newFileName?: string): boolean => {
+      const baseline = baselines[consoleNodeId];
+      if (!baseline) return false;
+      const consoleOps = stagedPatches
+        .filter((p) => p.consoleNodeId === consoleNodeId)
+        .map((p) => p.op);
+      if (consoleOps.length === 0) return false;
+
+      const patchedJson = applyPatchOpsToRawSnap(baseline.rawJson, consoleOps);
+      const now = new Date().toISOString();
+      const fileName =
+        (newFileName ?? '').trim() || buildDefaultSnapExportName(baseline.fileName);
+      const parsed = parseWingSnap(patchedJson, {
+        fileName,
+        consoleNodeId,
+        importedAt: now,
+      });
+      const merged = applySnapMerge(rig, parsed, consoleNodeId);
+      setRig(merged.rig);
+
+      const updatedBaseline: ConsoleBaselineRecord = {
+        ...baseline,
+        fileName,
+        byteLength: patchedJson.length,
+        importedAt: now,
+        rawJson: patchedJson,
+      };
+      setBaselines((prev) => ({ ...prev, [consoleNodeId]: updatedBaseline }));
+      void saveBaselineRecord(updatedBaseline);
+      setStagedPatches((prev) => prev.filter((p) => p.consoleNodeId !== consoleNodeId));
+      return true;
+    },
+    [baselines, stagedPatches, rig],
+  );
+
+  const deleteConsoleBaseline = useCallback((consoleNodeId: string) => {
+    setBaselines((prev) => {
+      const next = { ...prev };
+      delete next[consoleNodeId];
+      return next;
+    });
+    setStagedPatches((prev) => prev.filter((p) => p.consoleNodeId !== consoleNodeId));
+    void deleteBaselineRecord(consoleNodeId);
+  }, []);
 
   const importRigJson = useCallback((rawText: string): { ok: true } | { ok: false; error: string } => {
     try {
@@ -281,7 +580,9 @@ export function useRigStore() {
           error: validation.issues.map((i) => `${i.path}: ${i.message}`).join('; '),
         };
       }
-      setRig(parsed as RigDocument);
+      const doc = parsed as RigDocument;
+      setRig(doc);
+      setLinkConfig(inferConsoleLinkConfig(doc));
       setSelection(null);
       setTrace(null);
       return { ok: true };
@@ -294,39 +595,59 @@ export function useRigStore() {
   }, []);
 
   const exportRigJson = useCallback(() => {
-    const blob = new Blob([JSON.stringify(rig, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(effectiveRig, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const safeName = rig.name
+    const safeName = effectiveRig.name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
     a.download = `${safeName || 'wing-rig'}.rig.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [rig]);
+  }, [effectiveRig]);
 
   const resetToDemoRig = useCallback(() => {
     const demo = createMockRig();
     setRig(demo);
+    setLinkConfig(inferConsoleLinkConfig(demo));
+    setStagedPatches([]);
+    setBaselines({});
+    void clearAllBaselines();
     setSelection(null);
     setTrace(null);
   }, []);
 
   return {
-    rig,
+    rig: effectiveRig,
+    committedRig: rig,
     editMode,
     setEditMode,
+    patchUnlocked,
+    setPatchUnlocked,
     selection,
     selectNode,
     selectTrunk,
     clearSelection,
     trace,
     runTrace,
+    traceOnSchematic,
     clearTrace,
     view,
     setView,
+    baselineMetas,
+    stagedPatches,
+    linkConfig,
+    auditIssues,
+    stagePatches,
+    removeStagedPatch,
+    undoLastStagedPatch,
+    discardStagedPatches,
+    updateLinkConfig,
+    exportPatchedSnap,
+    commitConsoleBaseline,
+    deleteConsoleBaseline,
     updateRigMeta,
     updateNodePosition,
     updateNodeAnnotation,

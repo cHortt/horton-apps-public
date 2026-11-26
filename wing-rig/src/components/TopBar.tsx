@@ -11,6 +11,7 @@ import {
   Sun,
   Unlock,
   Upload,
+  Wrench,
   X,
 } from 'lucide-react';
 import type { RigDocument, SearchHit } from '../schema/rig';
@@ -22,6 +23,8 @@ interface TopBarProps {
   editMode: boolean;
   view: AppViewMode;
   isDark: boolean;
+  stagedCount: number;
+  auditAlertCount: number;
   onToggleTheme: () => void;
   onToggleEditMode: () => void;
   onUpdateRigName: (name: string) => void;
@@ -38,6 +41,8 @@ export function TopBar({
   editMode,
   view,
   isDark,
+  stagedCount,
+  auditAlertCount,
   onToggleTheme,
   onToggleEditMode,
   onUpdateRigName,
@@ -260,7 +265,34 @@ export function TopBar({
 
         <button
           type="button"
-          onClick={() => onToggleView(view === 'canvas' ? 'print' : 'canvas')}
+          onClick={() => onToggleView(view === 'patch' ? 'canvas' : 'patch')}
+          title="Open WING Patch Studio to edit sources, splits, mix buses, verify paths, and export .snap files"
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+            view === 'patch'
+              ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800 dark:border-sky-400 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400'
+              : stagedCount > 0
+                ? 'border-sky-400 bg-sky-50 text-sky-900 hover:bg-sky-100 dark:border-sky-600 dark:bg-sky-950/60 dark:text-sky-200 dark:hover:bg-sky-950'
+                : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700'
+          }`}
+        >
+          <Wrench className="w-3.5 h-3.5" />
+          <span>{view === 'patch' ? 'Schematic' : 'Patch Studio'}</span>
+          {stagedCount > 0 && (
+            <span className="rounded-full bg-sky-600 dark:bg-sky-400 px-1.5 py-0 font-mono text-[10px] font-bold text-white dark:text-slate-950">
+              {stagedCount}
+            </span>
+          )}
+          {stagedCount === 0 && auditAlertCount > 0 && view !== 'patch' && (
+            <span
+              title={`${auditAlertCount} path verifier alert(s)`}
+              className="h-2 w-2 rounded-full bg-amber-500"
+            />
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onToggleView(view === 'print' ? 'canvas' : 'print')}
           className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
             view === 'print'
               ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800 dark:border-sky-400 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400'
@@ -268,7 +300,7 @@ export function TopBar({
           }`}
         >
           <Printer className="w-3.5 h-3.5" />
-          <span>{view === 'print' ? 'Back to Schematic' : 'Print / PDF'}</span>
+          <span>{view === 'print' ? 'Schematic' : 'Print / PDF'}</span>
         </button>
 
         <button

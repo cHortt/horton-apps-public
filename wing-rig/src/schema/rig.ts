@@ -85,6 +85,7 @@ export interface ChannelPatch {
   polarityInverted?: boolean;
   muted?: boolean;
   colorIndex?: number;
+  tags?: string;
   /** Console channel strip that consumes this source (e.g. "CH 1", "AUX 2") */
   consoleChannel?: string;
   /** Source console channel name override if different from preamp name */
@@ -119,6 +120,7 @@ export interface MixBusSummary {
   mono: boolean;
   muted: boolean;
   colorIndex?: number;
+  tags?: string;
   /** For MON buses: resolved source string like "BUS.7" or "MAIN.1" */
   monitorSource?: {
     kind: MixBusKind;
@@ -141,6 +143,8 @@ export interface ConsoleChannelStrip {
   rawName: string;
   resolvedName: string;
   clink: boolean;
+  colorIndex?: number;
+  tags?: string;
   sourceGroup: string;
   sourceSlot: number;
   altSourceGroup?: string;

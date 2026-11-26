@@ -8,13 +8,20 @@ import { SideInspector } from './components/inspector/SideInspector';
 import { AddGearModal } from './components/inspector/AddGearModal';
 import { SnapImportModal } from './components/import/SnapImportModal';
 import { PrintView } from './components/print/PrintView';
+import { PatchStudio } from './components/patch/PatchStudio';
 import type { SearchHit } from './schema/rig';
 
 export function App() {
   const store = useRigStore();
   const { isDark, toggleTheme } = useTheme();
   const [snapModalOpen, setSnapModalOpen] = useState(false);
+  const [snapTargetConsoleId, setSnapTargetConsoleId] = useState<string | undefined>(undefined);
   const [addGearModalOpen, setAddGearModalOpen] = useState(false);
+
+  const openSnapModal = (targetConsoleId?: string) => {
+    setSnapTargetConsoleId(targetConsoleId);
+    setSnapModalOpen(true);
+  };
 
   const handleSelectSearchHit = (hit: SearchHit) => {
     if (hit.trunkId) {
@@ -25,6 +32,8 @@ export function App() {
     store.runTrace(hit.traceTarget);
   };
 
+  const auditAlertCount = store.auditIssues.filter((i) => i.severity !== 'info').length;
+
   return (
     <div className="flex h-full flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <TopBar
@@ -32,11 +41,13 @@ export function App() {
         editMode={store.editMode}
         view={store.view}
         isDark={isDark}
+        stagedCount={store.stagedPatches.length}
+        auditAlertCount={auditAlertCount}
         onToggleTheme={toggleTheme}
         onToggleEditMode={() => store.setEditMode(!store.editMode)}
         onUpdateRigName={(name) => store.updateRigMeta({ name })}
         onToggleView={store.setView}
-        onOpenSnapImport={() => setSnapModalOpen(true)}
+        onOpenSnapImport={() => openSnapModal()}
         onOpenAddGear={() => setAddGearModalOpen(true)}
         onExportRigJson={store.exportRigJson}
         onImportRigJson={store.importRigJson}
@@ -46,6 +57,27 @@ export function App() {
       {store.view === 'print' ? (
         <main className="flex-1 overflow-y-auto">
           <PrintView rig={store.rig} onBack={() => store.setView('canvas')} />
+        </main>
+      ) : store.view === 'patch' ? (
+        <main className="no-print flex-1 overflow-y-auto">
+          <PatchStudio
+            rig={store.rig}
+            baselines={store.baselineMetas}
+            stagedPatches={store.stagedPatches}
+            linkConfig={store.linkConfig}
+            auditIssues={store.auditIssues}
+            patchUnlocked={store.patchUnlocked}
+            onTogglePatchUnlocked={() => store.setPatchUnlocked(!store.patchUnlocked)}
+            onUpdateLinkConfig={store.updateLinkConfig}
+            onStagePatches={store.stagePatches}
+            onRemoveStagedPatch={store.removeStagedPatch}
+            onUndoLastStagedPatch={store.undoLastStagedPatch}
+            onDiscardStagedPatches={store.discardStagedPatches}
+            onExportPatchedSnap={store.exportPatchedSnap}
+            onCommitConsoleBaseline={store.commitConsoleBaseline}
+            onOpenSnapImport={(cid) => openSnapModal(cid)}
+            onTraceOnSchematic={store.traceOnSchematic}
+          />
         </main>
       ) : (
         <main className="no-print flex min-h-0 flex-1 flex-col lg:flex-row">
@@ -84,7 +116,7 @@ export function App() {
               onDismissOrphan={store.dismissOrphan}
               onDeleteManualNode={store.deleteManualNode}
               onDeleteManualTrunk={store.deleteManualTrunk}
-              onOpenSnapImport={() => setSnapModalOpen(true)}
+              onOpenSnapImport={() => openSnapModal()}
               onResetDemo={store.resetToDemoRig}
             />
           </div>
@@ -94,9 +126,13 @@ export function App() {
       {snapModalOpen && (
         <SnapImportModal
           rig={store.rig}
-          onClose={() => setSnapModalOpen(false)}
-          onApplyMerge={(parsed, targetConsoleId) => {
-            store.applySnapshot(parsed, targetConsoleId);
+          initialTargetConsoleId={snapTargetConsoleId}
+          onClose={() => {
+            setSnapModalOpen(false);
+            setSnapTargetConsoleId(undefined);
+          }}
+          onApplyMerge={(parsed, targetConsoleId, rawSnapJson) => {
+            store.applySnapshot(parsed, targetConsoleId, rawSnapJson);
           }}
         />
       )}
