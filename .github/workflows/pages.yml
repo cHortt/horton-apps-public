@@ -1,0 +1,58 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: wing-rig/package-lock.json
+      - name: Build wing-rig
+        working-directory: wing-rig
+        run: |
+          npm ci
+          npm run build
+      - name: Stage _site directory
+        run: |
+          rm -rf _site
+          mkdir -p _site/wing-rig
+          cp .nojekyll _site/
+          cp index.html _site/
+          cp -r grocery _site/grocery
+          cp -r vocal _site/vocal
+          cp -r smokies-trip _site/smokies-trip
+          cp -r learning _site/learning
+          cp -r wing-rig/dist/. _site/wing-rig/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
