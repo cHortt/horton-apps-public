@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import {
   Cpu,
+  GripHorizontal,
   Headphones,
   MonitorPlay,
   Radio,
@@ -102,7 +103,7 @@ export const HardwareNodeCard = memo(function HardwareNodeCard({
         isConsole ? 'w-[272px]' : 'w-[238px]'
       } ${containerRing} ${opacityClass} ${editMode ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`}
     >
-      {/* Left / Right / Top / Bottom schematic connection handles */}
+      {/* Left / Right / Top / Bottom bidirectional schematic connection handles */}
       <Handle
         id="left"
         type="target"
@@ -110,10 +111,22 @@ export const HardwareNodeCard = memo(function HardwareNodeCard({
         className="!w-2.5 !h-2.5 !bg-slate-400 dark:!bg-slate-500 !border-2 !border-white dark:!border-slate-900"
       />
       <Handle
+        id="left-source"
+        type="source"
+        position={Position.Left}
+        className="!w-2.5 !h-2.5 !bg-slate-400 dark:!bg-slate-500 !border-2 !border-white dark:!border-slate-900 !opacity-0"
+      />
+      <Handle
         id="right"
         type="source"
         position={Position.Right}
         className="!w-2.5 !h-2.5 !bg-slate-400 dark:!bg-slate-500 !border-2 !border-white dark:!border-slate-900"
+      />
+      <Handle
+        id="right-target"
+        type="target"
+        position={Position.Right}
+        className="!w-2.5 !h-2.5 !bg-slate-400 dark:!bg-slate-500 !border-2 !border-white dark:!border-slate-900 !opacity-0"
       />
       <Handle
         id="top-target"
@@ -142,11 +155,19 @@ export const HardwareNodeCard = memo(function HardwareNodeCard({
 
       {/* Header bar */}
       <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-slate-100 dark:border-slate-800">
-        <span
-          className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded-md border ${ZONE_STYLES[displayZone]}`}
-        >
-          {displayZone}
-        </span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          {editMode && (
+            <GripHorizontal
+              aria-hidden="true"
+              className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-400"
+            />
+          )}
+          <span
+            className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded-md border ${ZONE_STYLES[displayZone]}`}
+          >
+            {displayZone}
+          </span>
+        </div>
         <div className="flex items-center gap-1.5">
           {hasSnapshotSync && (
             <span

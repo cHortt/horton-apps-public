@@ -103,14 +103,60 @@ function loadInitialLinkConfig(rig: RigDocument): ConsoleLinkConfig {
   return inferred;
 }
 
+export function readInspectorCollapsed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY_PREFS);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { inspectorCollapsed?: unknown };
+    return parsed.inspectorCollapsed === true;
+  } catch {
+    return false;
+  }
+}
+
+export function writeInspectorCollapsed(collapsed: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY_PREFS);
+    let existing: Record<string, unknown> = {};
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        existing = parsed as Record<string, unknown>;
+      }
+    }
+    window.localStorage.setItem(
+      STORAGE_KEY_PREFS,
+      JSON.stringify({ ...existing, inspectorCollapsed: collapsed }),
+    );
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 export function useRigStore() {
   const [rig, setRig] = useState<RigDocument>(loadInitialRig);
   // Volunteer-First UX: always default to Read-Only Mode on startup
   const [editMode, setEditMode] = useState<boolean>(false);
   const [patchUnlocked, setPatchUnlocked] = useState<boolean>(false);
+  const [inspectorCollapsed, setInspectorCollapsedState] = useState<boolean>(readInspectorCollapsed);
   const [selection, setSelection] = useState<SelectionState>(null);
   const [trace, setTrace] = useState<TraceResult | null>(null);
   const [view, setView] = useState<AppViewMode>('canvas');
+
+  const setInspectorCollapsed = useCallback((collapsed: boolean) => {
+    setInspectorCollapsedState(collapsed);
+    writeInspectorCollapsed(collapsed);
+  }, []);
+
+  const toggleInspectorCollapsed = useCallback(() => {
+    setInspectorCollapsedState((prev) => {
+      const next = !prev;
+      writeInspectorCollapsed(next);
+      return next;
+    });
+  }, []);
 
   // Raw lossless .snap baselines (persisted in IndexedDB wing-rig:snapshots:v1)
   const [baselines, setBaselines] = useState<Record<string, ConsoleBaselineRecord>>({});
@@ -626,6 +672,9 @@ export function useRigStore() {
     setEditMode,
     patchUnlocked,
     setPatchUnlocked,
+    inspectorCollapsed,
+    setInspectorCollapsed,
+    toggleInspectorCollapsed,
     selection,
     selectNode,
     selectTrunk,

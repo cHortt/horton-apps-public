@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Background,
   BackgroundVariant,
@@ -8,7 +8,9 @@ import {
   type NodeMouseHandler,
   type NodeTypes,
   type OnNodeDrag,
+  type OnNodesChange,
 } from '@xyflow/react';
+import { Move, PanelRightOpen } from 'lucide-react';
 import type { Point2D, RigDocument, TraceResult, TrunkConnection, TrunkProtocol } from '../../schema/rig';
 import {
   PROTOCOL_META,
@@ -27,6 +29,7 @@ interface SystemCanvasProps {
   rig: RigDocument;
   editMode: boolean;
   isDark: boolean;
+  inspectorCollapsed: boolean;
   selection: SelectionState;
   trace: TraceResult | null;
   onSelectNode: (id: string) => void;
@@ -34,6 +37,7 @@ interface SystemCanvasProps {
   onClearSelection: () => void;
   onClearTrace: () => void;
   onNodePositionChange: (nodeId: string, pos: Point2D) => void;
+  onExpandInspector: () => void;
 }
 
 const nodeTypes: NodeTypes = {
@@ -44,34 +48,53 @@ const edgeTypes: EdgeTypes = {
   trunk: TrunkEdge,
 };
 
+/**
+ * Picks clean source/target handles in all 4 directions (left-to-right, right-to-left,
+ * top-to-bottom, bottom-to-top) so rearranging blocks to match the physical room
+ * never creates awkward backwards loops.
+ */
+export function chooseHandlesForPositions(
+  srcPos: Point2D,
+  tgtPos: Point2D,
+): { sourceHandle: string; targetHandle: string } {
+  const dx = tgtPos.x - srcPos.x;
+  const dy = tgtPos.y - srcPos.y;
+
+  // Prefer vertical handles when target is predominantly above or below source
+  if (Math.abs(dy) > Math.abs(dx) * 1.15 && Math.abs(dy) > 90) {
+    if (dy > 0) {
+      return { sourceHandle: 'bottom-source', targetHandle: 'top-target' };
+    }
+    return { sourceHandle: 'top-source', targetHandle: 'bottom-target' };
+  }
+
+  // Horizontal: route right -> left normally, or left-source -> right-target when rearranged right-to-left
+  if (dx < -40) {
+    return { sourceHandle: 'left-source', targetHandle: 'right-target' };
+  }
+  return { sourceHandle: 'right', targetHandle: 'left' };
+}
+
 function chooseHandles(
   doc: RigDocument,
   trunk: TrunkConnection,
+  dragOverrides: Record<string, Point2D>,
 ): { sourceHandle: string; targetHandle: string } {
   const srcNode = doc.nodes.find((n) => n.id === trunk.sourceNodeId);
   const tgtNode = doc.nodes.find((n) => n.id === trunk.targetNodeId);
   if (!srcNode || !tgtNode) {
     return { sourceHandle: 'right', targetHandle: 'left' };
   }
-  const srcPos = resolveNodePosition(doc, srcNode);
-  const tgtPos = resolveNodePosition(doc, tgtNode);
-  const dx = tgtPos.x - srcPos.x;
-  const dy = tgtPos.y - srcPos.y;
-
-  // Vertical connection when nodes are stacked in the same column (e.g. Stage WING -> IEM Rack, Media PC -> FOH WING)
-  if (Math.abs(dx) < 120 && Math.abs(dy) > 120) {
-    if (dy > 0) {
-      return { sourceHandle: 'bottom-source', targetHandle: 'top-target' };
-    }
-    return { sourceHandle: 'top-source', targetHandle: 'bottom-target' };
-  }
-  return { sourceHandle: 'right', targetHandle: 'left' };
+  const srcPos = dragOverrides[srcNode.id] ?? resolveNodePosition(doc, srcNode);
+  const tgtPos = dragOverrides[tgtNode.id] ?? resolveNodePosition(doc, tgtNode);
+  return chooseHandlesForPositions(srcPos, tgtPos);
 }
 
 export function SystemCanvas({
   rig,
   editMode,
   isDark,
+  inspectorCollapsed,
   selection,
   trace,
   onSelectNode,
@@ -79,7 +102,12 @@ export function SystemCanvas({
   onClearSelection,
   onClearTrace,
   onNodePositionChange,
+  onExpandInspector,
 }: SystemCanvasProps) {
+  // Live in-flight drag positions so React Flow moves nodes smoothly at 60fps
+  // before committing final coordinates to Layer 2 annotations (localStorage).
+  const [dragPositions, setDragPositions] = useState<Record<string, Point2D>>({});
+
   const activeNodeSet = useMemo(() => new Set(trace?.activeNodeIds ?? []), [trace]);
   const activeTrunkSet = useMemo(() => new Set(trace?.activeTrunkIds ?? []), [trace]);
   const snapshotNodeIds = useMemo(
@@ -98,7 +126,7 @@ export function SystemCanvas({
         return {
           id: node.id,
           type: 'hardware',
-          position: resolveNodePosition(rig, node),
+          position: dragPositions[node.id] ?? resolveNodePosition(rig, node),
           draggable: editMode,
           data: {
             hardware: node,
@@ -113,7 +141,7 @@ export function SystemCanvas({
           },
         };
       }),
-    [rig, editMode, selection, trace, activeNodeSet, snapshotNodeIds, onSelectNode],
+    [rig, dragPositions, editMode, selection, trace, activeNodeSet, snapshotNodeIds, onSelectNode],
   );
 
   const flowEdges: TrunkFlowEdge[] = useMemo(
@@ -124,7 +152,7 @@ export function SystemCanvas({
           : activeTrunkSet.has(trunk.id)
             ? 'active'
             : 'dimmed';
-        const { sourceHandle, targetHandle } = chooseHandles(rig, trunk);
+        const { sourceHandle, targetHandle } = chooseHandles(rig, trunk, dragPositions);
         return {
           id: trunk.id,
           type: 'trunk',
@@ -144,7 +172,41 @@ export function SystemCanvas({
           },
         };
       }),
-    [rig, selection, isDark, trace, activeTrunkSet, onSelectTrunk],
+    [rig, dragPositions, selection, isDark, trace, activeTrunkSet, onSelectTrunk],
+  );
+
+  const handleNodesChange: OnNodesChange<HardwareFlowNode> = useCallback(
+    (changes) => {
+      if (!editMode) return;
+      const updates: Record<string, Point2D> = {};
+      const committed: Array<{ id: string; pos: Point2D }> = [];
+      let hasUpdates = false;
+
+      for (const ch of changes) {
+        if (ch.type === 'position' && ch.position) {
+          updates[ch.id] = ch.position;
+          hasUpdates = true;
+          if (ch.dragging === false) {
+            committed.push({ id: ch.id, pos: ch.position });
+          }
+        }
+      }
+
+      if (hasUpdates) {
+        setDragPositions((prev) => ({ ...prev, ...updates }));
+      }
+      if (committed.length > 0) {
+        for (const item of committed) {
+          onNodePositionChange(item.id, item.pos);
+        }
+        setDragPositions((prev) => {
+          const next = { ...prev };
+          for (const item of committed) delete next[item.id];
+          return next;
+        });
+      }
+    },
+    [editMode, onNodePositionChange],
   );
 
   const handleNodeClick: NodeMouseHandler<HardwareFlowNode> = useCallback(
@@ -158,6 +220,12 @@ export function SystemCanvas({
     (_event, node) => {
       if (!editMode) return;
       onNodePositionChange(node.id, node.position);
+      setDragPositions((prev) => {
+        if (!(node.id in prev)) return prev;
+        const next = { ...prev };
+        delete next[node.id];
+        return next;
+      });
     },
     [editMode, onNodePositionChange],
   );
@@ -167,6 +235,16 @@ export function SystemCanvas({
     for (const t of rig.trunks) set.add(t.protocol);
     return [...set];
   }, [rig.trunks]);
+
+  const collapsedInspectLabel = useMemo(() => {
+    if (!selection) return 'Rig Inspector';
+    if (selection.type === 'node') {
+      const n = rig.nodes.find((item) => item.id === selection.id);
+      return n ? `Inspect: ${resolveNodeName(rig, n)}` : 'Rig Inspector';
+    }
+    const t = rig.trunks.find((item) => item.id === selection.id);
+    return t ? `Inspect: ${resolveTrunkName(rig, t)}` : 'Rig Inspector';
+  }, [rig, selection]);
 
   return (
     <div className="relative h-full w-full bg-slate-50 dark:bg-slate-950">
@@ -179,6 +257,14 @@ export function SystemCanvas({
         />
       )}
 
+      {/* Subtle Edit Mode room-layout drag cue */}
+      {editMode && !trace && (
+        <div className="pointer-events-none absolute top-3 left-3 z-10 inline-flex items-center gap-1.5 rounded-lg border border-amber-300/90 dark:border-amber-700/80 bg-amber-50/95 dark:bg-amber-950/90 backdrop-blur-xs px-2.5 py-1 text-[11px] font-medium text-amber-900 dark:text-amber-200 shadow-xs">
+          <Move className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <span>Drag blocks to arrange room layout · Auto-saved</span>
+        </div>
+      )}
+
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
@@ -187,6 +273,9 @@ export function SystemCanvas({
         nodesDraggable={editMode}
         nodesConnectable={false}
         elementsSelectable={true}
+        snapToGrid={true}
+        snapGrid={[11, 11]}
+        onNodesChange={handleNodesChange}
         onNodeClick={handleNodeClick}
         onNodeDragStop={handleNodeDragStop}
         onPaneClick={() => onClearSelection()}
@@ -230,6 +319,19 @@ export function SystemCanvas({
           {editMode ? 'Drag devices to arrange' : 'Click any device or trunk to inspect & trace'}
         </span>
       </div>
+
+      {/* Floating Expand Inspector button when Rig Inspector is collapsed */}
+      {inspectorCollapsed && (
+        <button
+          type="button"
+          onClick={onExpandInspector}
+          title="Expand Rig Inspector"
+          className="pointer-events-auto absolute bottom-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xs px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-sm hover:border-sky-500 hover:text-sky-700 dark:hover:text-sky-400 transition-colors cursor-pointer"
+        >
+          <PanelRightOpen className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+          <span className="max-w-[190px] truncate">{collapsedInspectLabel}</span>
+        </button>
+      )}
     </div>
   );
 }

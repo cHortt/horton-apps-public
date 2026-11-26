@@ -79,7 +79,7 @@ function SchematicSvg({ rig }: { rig: RigDocument }) {
         const proto = PROTOCOL_META[trunk.protocol];
         const dx = tgt.x - src.x;
         const dy = tgt.y - src.y;
-        const isVertical = Math.abs(dx) < 120 && Math.abs(dy) > 100;
+        const isVertical = Math.abs(dy) > Math.abs(dx) * 1.15 && Math.abs(dy) > 90;
 
         let x1: number;
         let y1: number;
@@ -98,6 +98,13 @@ function SchematicSvg({ rig }: { rig: RigDocument }) {
             y2 = tgt.y + tgt.h;
           }
           pathD = `M ${x1} ${y1} L ${x2} ${y2}`;
+        } else if (dx < -40) {
+          x1 = src.x;
+          y1 = src.y + src.h / 2;
+          x2 = tgt.x + tgt.w;
+          y2 = tgt.y + tgt.h / 2;
+          const midX = (x1 + x2) / 2;
+          pathD = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
         } else {
           x1 = src.x + src.w;
           y1 = src.y + src.h / 2;

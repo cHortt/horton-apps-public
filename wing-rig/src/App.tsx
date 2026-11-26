@@ -41,9 +41,11 @@ export function App() {
         editMode={store.editMode}
         view={store.view}
         isDark={isDark}
+        inspectorCollapsed={store.inspectorCollapsed}
         stagedCount={store.stagedPatches.length}
         auditAlertCount={auditAlertCount}
         onToggleTheme={toggleTheme}
+        onToggleInspector={store.toggleInspectorCollapsed}
         onToggleEditMode={() => store.setEditMode(!store.editMode)}
         onUpdateRigName={(name) => store.updateRigMeta({ name })}
         onToggleView={store.setView}
@@ -81,9 +83,28 @@ export function App() {
         </main>
       ) : (
         <main className="no-print flex min-h-0 flex-1 flex-col lg:flex-row">
-          <div className="relative min-h-[380px] flex-1">
+          <div className="relative min-h-0 flex-1">
             <ReactFlowProvider>
               <SystemCanvas
+                rig={store.rig}
+                editMode={store.editMode}
+                isDark={isDark}
+                inspectorCollapsed={store.inspectorCollapsed}
+                selection={store.selection}
+                trace={store.trace}
+                onSelectNode={store.selectNode}
+                onSelectTrunk={store.selectTrunk}
+                onClearSelection={store.clearSelection}
+                onClearTrace={store.clearTrace}
+                onNodePositionChange={store.updateNodePosition}
+                onExpandInspector={() => store.setInspectorCollapsed(false)}
+              />
+            </ReactFlowProvider>
+          </div>
+
+          {!store.inspectorCollapsed && (
+            <div className="h-[46vh] lg:h-auto lg:w-[410px] xl:w-[440px] shrink-0 overflow-hidden">
+              <SideInspector
                 rig={store.rig}
                 editMode={store.editMode}
                 isDark={isDark}
@@ -92,34 +113,20 @@ export function App() {
                 onSelectNode={store.selectNode}
                 onSelectTrunk={store.selectTrunk}
                 onClearSelection={store.clearSelection}
-                onClearTrace={store.clearTrace}
-                onNodePositionChange={store.updateNodePosition}
+                onCollapse={() => store.setInspectorCollapsed(true)}
+                onRunTrace={store.runTrace}
+                onUpdateNodeAnnotation={store.updateNodeAnnotation}
+                onUpdateTrunkAnnotation={store.updateTrunkAnnotation}
+                onUpdateChannelAnnotation={store.updateChannelAnnotation}
+                onUpdateBusAnnotation={store.updateBusAnnotation}
+                onDismissOrphan={store.dismissOrphan}
+                onDeleteManualNode={store.deleteManualNode}
+                onDeleteManualTrunk={store.deleteManualTrunk}
+                onOpenSnapImport={() => openSnapModal()}
+                onResetDemo={store.resetToDemoRig}
               />
-            </ReactFlowProvider>
-          </div>
-
-          <div className="h-[46vh] lg:h-auto lg:w-[410px] xl:w-[440px] shrink-0 overflow-hidden">
-            <SideInspector
-              rig={store.rig}
-              editMode={store.editMode}
-              isDark={isDark}
-              selection={store.selection}
-              trace={store.trace}
-              onSelectNode={store.selectNode}
-              onSelectTrunk={store.selectTrunk}
-              onClearSelection={store.clearSelection}
-              onRunTrace={store.runTrace}
-              onUpdateNodeAnnotation={store.updateNodeAnnotation}
-              onUpdateTrunkAnnotation={store.updateTrunkAnnotation}
-              onUpdateChannelAnnotation={store.updateChannelAnnotation}
-              onUpdateBusAnnotation={store.updateBusAnnotation}
-              onDismissOrphan={store.dismissOrphan}
-              onDeleteManualNode={store.deleteManualNode}
-              onDeleteManualTrunk={store.deleteManualTrunk}
-              onOpenSnapImport={() => openSnapModal()}
-              onResetDemo={store.resetToDemoRig}
-            />
-          </div>
+            </div>
+          )}
         </main>
       )}
 

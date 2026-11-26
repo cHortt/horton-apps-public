@@ -5,6 +5,8 @@ import {
   GitBranch,
   Lock,
   Moon,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   Printer,
   Search,
@@ -23,9 +25,11 @@ interface TopBarProps {
   editMode: boolean;
   view: AppViewMode;
   isDark: boolean;
+  inspectorCollapsed: boolean;
   stagedCount: number;
   auditAlertCount: number;
   onToggleTheme: () => void;
+  onToggleInspector: () => void;
   onToggleEditMode: () => void;
   onUpdateRigName: (name: string) => void;
   onToggleView: (view: AppViewMode) => void;
@@ -41,9 +45,11 @@ export function TopBar({
   editMode,
   view,
   isDark,
+  inspectorCollapsed,
   stagedCount,
   auditAlertCount,
   onToggleTheme,
+  onToggleInspector,
   onToggleEditMode,
   onUpdateRigName,
   onToggleView,
@@ -302,6 +308,30 @@ export function TopBar({
           <Printer className="w-3.5 h-3.5" />
           <span>{view === 'print' ? 'Schematic' : 'Print / PDF'}</span>
         </button>
+
+        {view === 'canvas' && (
+          <button
+            type="button"
+            onClick={onToggleInspector}
+            aria-label={inspectorCollapsed ? 'Expand Rig Inspector' : 'Collapse Rig Inspector'}
+            title={
+              inspectorCollapsed
+                ? 'Show Rig Inspector panel'
+                : 'Collapse Rig Inspector for full-screen topology view'
+            }
+            className={`inline-flex items-center justify-center rounded-lg border p-1.5 transition-colors cursor-pointer ${
+              inspectorCollapsed
+                ? 'border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-950/60 dark:text-sky-300 dark:hover:bg-sky-950'
+                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
+            }`}
+          >
+            {inspectorCollapsed ? (
+              <PanelRightOpen className="w-3.5 h-3.5" />
+            ) : (
+              <PanelRightClose className="w-3.5 h-3.5" />
+            )}
+          </button>
+        )}
 
         <button
           type="button"

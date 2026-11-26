@@ -8,6 +8,7 @@ import {
   Edit3,
   GitBranch,
   Layers,
+  PanelRightClose,
   Pencil,
   RotateCcw,
   Search,
@@ -50,6 +51,7 @@ interface SideInspectorProps {
   onSelectNode: (id: string) => void;
   onSelectTrunk: (id: string) => void;
   onClearSelection: () => void;
+  onCollapse: () => void;
   onRunTrace: (target: TraceTarget) => void;
   onUpdateNodeAnnotation: (nodeId: string, patch: Partial<NodeAnnotation>) => void;
   onUpdateTrunkAnnotation: (trunkId: string, patch: Partial<TrunkAnnotation>) => void;
@@ -306,6 +308,7 @@ function TrunkInspectorView({
   isDark,
   trace,
   onClearSelection,
+  onCollapse,
   onRunTrace,
   onUpdateTrunkAnnotation,
   onUpdateChannelAnnotation,
@@ -405,10 +408,20 @@ function TrunkInspectorView({
             )}
             <button
               type="button"
+              title="Back to Rig Overview"
               onClick={onClearSelection}
               className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
             >
               <X className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              title="Collapse Rig Inspector"
+              aria-label="Collapse Rig Inspector"
+              onClick={onCollapse}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+            >
+              <PanelRightClose className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -553,6 +566,7 @@ function NodeInspectorView({
   isDark,
   trace,
   onClearSelection,
+  onCollapse,
   onRunTrace,
   onUpdateNodeAnnotation,
   onUpdateChannelAnnotation,
@@ -646,10 +660,20 @@ function NodeInspectorView({
             )}
             <button
               type="button"
+              title="Back to Rig Overview"
               onClick={onClearSelection}
               className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
             >
               <X className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              title="Collapse Rig Inspector"
+              aria-label="Collapse Rig Inspector"
+              onClick={onCollapse}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+            >
+              <PanelRightClose className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -961,6 +985,7 @@ function OverviewInspectorView({
   isDark,
   onSelectNode,
   onSelectTrunk,
+  onCollapse,
   onDismissOrphan,
   onOpenSnapImport,
   onResetDemo,
@@ -968,9 +993,20 @@ function OverviewInspectorView({
   return (
     <aside className="flex h-full w-full flex-col border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
       <div className="border-b border-slate-200 dark:border-slate-800 px-4 py-3.5">
-        <div className="flex items-center gap-2">
-          <Layers className="w-4 h-4 text-sky-700 dark:text-sky-400" />
-          <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Rig Inspector</h2>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-sky-700 dark:text-sky-400" />
+            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Rig Inspector</h2>
+          </div>
+          <button
+            type="button"
+            title="Collapse Rig Inspector for full-screen topology view"
+            aria-label="Collapse Rig Inspector"
+            onClick={onCollapse}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+          >
+            <PanelRightClose className="w-4 h-4" />
+          </button>
         </div>
         <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
           Select any hardware block or cable trunk on the diagram to inspect 1–48 channel patch lists
