@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Background,
   BackgroundVariant,
   Controls,
   ReactFlow,
+  applyNodeChanges,
   type EdgeTypes,
   type NodeMouseHandler,
   type NodeTypes,
@@ -78,16 +79,65 @@ export function chooseHandlesForPositions(
 function chooseHandles(
   doc: RigDocument,
   trunk: TrunkConnection,
-  dragOverrides: Record<string, Point2D>,
+  livePositions: Map<string, Point2D>,
 ): { sourceHandle: string; targetHandle: string } {
   const srcNode = doc.nodes.find((n) => n.id === trunk.sourceNodeId);
   const tgtNode = doc.nodes.find((n) => n.id === trunk.targetNodeId);
   if (!srcNode || !tgtNode) {
     return { sourceHandle: 'right', targetHandle: 'left' };
   }
-  const srcPos = dragOverrides[srcNode.id] ?? resolveNodePosition(doc, srcNode);
-  const tgtPos = dragOverrides[tgtNode.id] ?? resolveNodePosition(doc, tgtNode);
+  const srcPos = livePositions.get(srcNode.id) ?? resolveNodePosition(doc, srcNode);
+  const tgtPos = livePositions.get(tgtNode.id) ?? resolveNodePosition(doc, tgtNode);
   return chooseHandlesForPositions(srcPos, tgtPos);
+}
+
+/**
+ * Reconciles RigDocument hardware nodes into React Flow nodes while preserving
+ * React Flow v12 internal properties (`measured`, `dragging`, `selected`) so nodes
+ * never lose measured dimensions and disappear during or after dragging.
+ */
+export function reconcileFlowNodes(
+  prevNodes: HardwareFlowNode[],
+  params: {
+    rig: RigDocument;
+    editMode: boolean;
+    selection: SelectionState;
+    trace: TraceResult | null;
+    activeNodeSet: Set<string>;
+    snapshotNodeIds: Set<string>;
+    onSelectNode: (id: string) => void;
+  },
+): HardwareFlowNode[] {
+  const { rig, editMode, selection, trace, activeNodeSet, snapshotNodeIds, onSelectNode } = params;
+  const prevById = new Map(prevNodes.map((n) => [n.id, n]));
+
+  return rig.nodes.map((node) => {
+    const prev = prevById.get(node.id);
+    const traceState: 'none' | 'active' | 'dimmed' = !trace
+      ? 'none'
+      : activeNodeSet.has(node.id)
+        ? 'active'
+        : 'dimmed';
+
+    return {
+      ...prev,
+      id: node.id,
+      type: 'hardware',
+      position: prev?.dragging ? prev.position : resolveNodePosition(rig, node),
+      draggable: editMode,
+      data: {
+        hardware: node,
+        displayName: resolveNodeName(rig, node),
+        displayZone: resolveNodeZone(rig, node),
+        notes: rig.annotations.nodes[node.id]?.notes,
+        editMode,
+        isSelected: selection?.type === 'node' && selection.id === node.id,
+        traceState,
+        hasSnapshotSync: snapshotNodeIds.has(node.id) || node.sourceOrigin === 'snapshot',
+        onSelect: onSelectNode,
+      },
+    };
+  });
 }
 
 export function SystemCanvas({
@@ -104,10 +154,6 @@ export function SystemCanvas({
   onNodePositionChange,
   onExpandInspector,
 }: SystemCanvasProps) {
-  // Live in-flight drag positions so React Flow moves nodes smoothly at 60fps
-  // before committing final coordinates to Layer 2 annotations (localStorage).
-  const [dragPositions, setDragPositions] = useState<Record<string, Point2D>>({});
-
   const activeNodeSet = useMemo(() => new Set(trace?.activeNodeIds ?? []), [trace]);
   const activeTrunkSet = useMemo(() => new Set(trace?.activeTrunkIds ?? []), [trace]);
   const snapshotNodeIds = useMemo(
@@ -115,33 +161,37 @@ export function SystemCanvas({
     [rig.sourceSnapshots],
   );
 
-  const flowNodes: HardwareFlowNode[] = useMemo(
-    () =>
-      rig.nodes.map((node) => {
-        const traceState = !trace
-          ? 'none'
-          : activeNodeSet.has(node.id)
-            ? 'active'
-            : 'dimmed';
-        return {
-          id: node.id,
-          type: 'hardware',
-          position: dragPositions[node.id] ?? resolveNodePosition(rig, node),
-          draggable: editMode,
-          data: {
-            hardware: node,
-            displayName: resolveNodeName(rig, node),
-            displayZone: resolveNodeZone(rig, node),
-            notes: rig.annotations.nodes[node.id]?.notes,
-            editMode,
-            isSelected: selection?.type === 'node' && selection.id === node.id,
-            traceState,
-            hasSnapshotSync: snapshotNodeIds.has(node.id) || node.sourceOrigin === 'snapshot',
-            onSelect: onSelectNode,
-          },
-        };
+  // Stateful React Flow nodes updated via applyNodeChanges so React Flow v12
+  // preserves `measured` dimensions across drags, re-renders, and mode switches.
+  const [flowNodes, setFlowNodes] = useState<HardwareFlowNode[]>(() =>
+    reconcileFlowNodes([], {
+      rig,
+      editMode,
+      selection,
+      trace,
+      activeNodeSet,
+      snapshotNodeIds,
+      onSelectNode,
+    }),
+  );
+
+  useEffect(() => {
+    setFlowNodes((prev) =>
+      reconcileFlowNodes(prev, {
+        rig,
+        editMode,
+        selection,
+        trace,
+        activeNodeSet,
+        snapshotNodeIds,
+        onSelectNode,
       }),
-    [rig, dragPositions, editMode, selection, trace, activeNodeSet, snapshotNodeIds, onSelectNode],
+    );
+  }, [rig, editMode, selection, trace, activeNodeSet, snapshotNodeIds, onSelectNode]);
+
+  const livePositions = useMemo(
+    () => new Map(flowNodes.map((n) => [n.id, n.position])),
+    [flowNodes],
   );
 
   const flowEdges: TrunkFlowEdge[] = useMemo(
@@ -152,7 +202,7 @@ export function SystemCanvas({
           : activeTrunkSet.has(trunk.id)
             ? 'active'
             : 'dimmed';
-        const { sourceHandle, targetHandle } = chooseHandles(rig, trunk, dragPositions);
+        const { sourceHandle, targetHandle } = chooseHandles(rig, trunk, livePositions);
         return {
           id: trunk.id,
           type: 'trunk',
@@ -172,41 +222,21 @@ export function SystemCanvas({
           },
         };
       }),
-    [rig, dragPositions, selection, isDark, trace, activeTrunkSet, onSelectTrunk],
+    [rig, livePositions, selection, isDark, trace, activeTrunkSet, onSelectTrunk],
   );
 
   const handleNodesChange: OnNodesChange<HardwareFlowNode> = useCallback(
     (changes) => {
-      if (!editMode) return;
-      const updates: Record<string, Point2D> = {};
-      const committed: Array<{ id: string; pos: Point2D }> = [];
-      let hasUpdates = false;
+      // Always allow React Flow dimension/selection changes so nodes stay measured & visible;
+      // only allow position moves when Edit Mode is unlocked.
+      const allowed = editMode
+        ? changes.filter((c) => c.type !== 'remove')
+        : changes.filter((c) => c.type !== 'position' && c.type !== 'remove');
+      if (allowed.length === 0) return;
 
-      for (const ch of changes) {
-        if (ch.type === 'position' && ch.position) {
-          updates[ch.id] = ch.position;
-          hasUpdates = true;
-          if (ch.dragging === false) {
-            committed.push({ id: ch.id, pos: ch.position });
-          }
-        }
-      }
-
-      if (hasUpdates) {
-        setDragPositions((prev) => ({ ...prev, ...updates }));
-      }
-      if (committed.length > 0) {
-        for (const item of committed) {
-          onNodePositionChange(item.id, item.pos);
-        }
-        setDragPositions((prev) => {
-          const next = { ...prev };
-          for (const item of committed) delete next[item.id];
-          return next;
-        });
-      }
+      setFlowNodes((nds) => applyNodeChanges(allowed, nds));
     },
-    [editMode, onNodePositionChange],
+    [editMode],
   );
 
   const handleNodeClick: NodeMouseHandler<HardwareFlowNode> = useCallback(
@@ -220,12 +250,6 @@ export function SystemCanvas({
     (_event, node) => {
       if (!editMode) return;
       onNodePositionChange(node.id, node.position);
-      setDragPositions((prev) => {
-        if (!(node.id in prev)) return prev;
-        const next = { ...prev };
-        delete next[node.id];
-        return next;
-      });
     },
     [editMode, onNodePositionChange],
   );

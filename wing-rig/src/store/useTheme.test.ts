@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { applyNodeChanges } from '@xyflow/react';
 import {
   STORAGE_KEY_PREFS,
   readInspectorCollapsed,
   writeInspectorCollapsed,
 } from './useRigStore';
 import { readThemePreference, resolveIsDark, writeThemePreference } from './useTheme';
-import { chooseHandlesForPositions } from '../components/canvas/SystemCanvas';
+import { createMockRig } from '../schema/mockRig';
+import { chooseHandlesForPositions, reconcileFlowNodes } from '../components/canvas/SystemCanvas';
 
 describe('useTheme & UI layout preference helpers', () => {
   afterEach(() => {
@@ -73,5 +75,67 @@ describe('useTheme & UI layout preference helpers', () => {
       sourceHandle: 'top-source',
       targetHandle: 'bottom-target',
     });
+  });
+
+  it('preserves React Flow v12 measured dimensions during drag and reconciliation so nodes never disappear', () => {
+    const rig = createMockRig();
+    const baseParams = {
+      rig,
+      editMode: true,
+      selection: null,
+      trace: null,
+      activeNodeSet: new Set<string>(),
+      snapshotNodeIds: new Set<string>(),
+      onSelectNode: () => {},
+    };
+
+    // 1. Initial nodes
+    let nodes = reconcileFlowNodes([], baseParams);
+    // 2. React Flow measures all nodes on mount via `dimensions` changes
+    nodes = applyNodeChanges(
+      nodes.map((n) => ({
+        id: n.id,
+        type: 'dimensions' as const,
+        dimensions: { width: 272, height: 148 },
+      })),
+      nodes,
+    );
+    expect(nodes.every((n) => n.measured?.width === 272 && n.measured?.height === 148)).toBe(true);
+
+    // 3. User starts dragging stage-wing
+    nodes = applyNodeChanges(
+      [
+        {
+          id: 'stage-wing',
+          type: 'position',
+          position: { x: 600, y: 300 },
+          dragging: true,
+        },
+      ],
+      nodes,
+    );
+    // Reconcile while dragging (e.g. selection or state change) keeps live drag position AND measured dims
+    nodes = reconcileFlowNodes(nodes, {
+      ...baseParams,
+      selection: { type: 'node', id: 'stage-wing' },
+    });
+    const dragged = nodes.find((n) => n.id === 'stage-wing')!;
+    expect(dragged.position).toEqual({ x: 600, y: 300 });
+    expect(nodes.every((n) => n.measured?.width === 272 && n.measured?.height === 148)).toBe(true);
+
+    // 4. User drops stage-wing and rig updates persisted position
+    nodes = applyNodeChanges(
+      [{ id: 'stage-wing', type: 'position', position: { x: 600, y: 300 }, dragging: false }],
+      nodes,
+    );
+    const updatedRig = {
+      ...rig,
+      nodes: rig.nodes.map((n) =>
+        n.id === 'stage-wing' ? { ...n, position: { x: 600, y: 300 } } : n,
+      ),
+    };
+    nodes = reconcileFlowNodes(nodes, { ...baseParams, rig: updatedRig });
+    expect(nodes.find((n) => n.id === 'stage-wing')?.position).toEqual({ x: 600, y: 300 });
+    expect(nodes.every((n) => n.measured?.width === 272 && n.measured?.height === 148)).toBe(true);
   });
 });
