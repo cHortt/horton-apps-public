@@ -17,13 +17,17 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT_FILES = {
     "README.md",
     "POLICY.md",
+    "AGENTS.md",
     ".nojekyll",
     ".gitignore",
     "index.html",
+    ".agents/rules/wing-parser.md",
+    ".agents/rules/print-and-ui.md",
     "scripts/pii_scan.py",
     "scripts/pii_allow.txt",
     "scripts/path_allow.py",
     ".github/workflows/scan.yml",
+    ".github/workflows/pages.yml",
 }
 
 # Types are full-match patterns for the path inside the applet folder.
@@ -51,6 +55,17 @@ APPLETS = {
     # Lessons, references, progress logs, and rendered PDFs. No other types.
     "learning": [
         r"(?:[A-Za-z0-9][A-Za-z0-9._-]*/)*[A-Za-z0-9][A-Za-z0-9._-]*\.(?:md|html|css|js|pdf|csv)",
+    ],
+    # Behringer WING Rig Visualizer (React + Vite + TypeScript).
+    "wing-rig": [
+        r"index\.html",
+        r"package(?:-lock)?\.json",
+        r"tsconfig(?:\.[A-Za-z0-9_-]+)?\.json",
+        r"vite\.config\.ts",
+        r"docs/[A-Za-z0-9][A-Za-z0-9._-]*\.md",
+        r"fixtures/snapshots/README\.md",
+        r"fixtures/snapshots/[A-Za-z0-9][A-Za-z0-9._-]*\.snap",
+        r"src/(?:[A-Za-z0-9][A-Za-z0-9._-]*/)*[A-Za-z0-9][A-Za-z0-9._-]*\.(?:ts|tsx|css|svg)",
     ],
 }
 

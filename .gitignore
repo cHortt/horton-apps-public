@@ -16,3 +16,11 @@
 __pycache__/
 # The smokies-trip page ships its rendered PDFs.
 !smokies-trip/*.pdf
+# wing-rig Vite/TypeScript applet
+node_modules/
+wing-rig/dist/
+!wing-rig/package.json
+!wing-rig/package-lock.json
+!wing-rig/tsconfig.json
+!wing-rig/tsconfig.*.json
+
