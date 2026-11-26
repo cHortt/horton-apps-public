@@ -44,6 +44,7 @@ import type { SelectionState } from '../../store/useRigStore';
 interface SideInspectorProps {
   rig: RigDocument;
   editMode: boolean;
+  isDark: boolean;
   selection: SelectionState;
   trace: TraceResult | null;
   onSelectNode: (id: string) => void;
@@ -126,8 +127,10 @@ function ChannelTableRow({
 
   return (
     <div
-      className={`border-b border-slate-100 last:border-b-0 transition-colors ${
-        isTraced ? 'bg-sky-50/90' : 'hover:bg-slate-50'
+      className={`border-b border-slate-100 dark:border-slate-800/80 last:border-b-0 transition-colors ${
+        isTraced
+          ? 'bg-sky-50/90 dark:bg-sky-950/60'
+          : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
       }`}
     >
       <div
@@ -145,8 +148,8 @@ function ChannelTableRow({
         <span
           className={`mt-0.5 inline-flex h-5 w-7 shrink-0 items-center justify-center rounded font-mono text-[11px] font-semibold ${
             isTraced
-              ? 'bg-sky-600 text-white'
-              : 'bg-slate-100 text-slate-700 border border-slate-200'
+              ? 'bg-sky-600 dark:bg-sky-500 text-white dark:text-slate-950'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
           }`}
         >
           {channel.slot}
@@ -154,30 +157,32 @@ function ChannelTableRow({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[12.5px] font-semibold text-slate-900 truncate">
+            <span className="text-[12.5px] font-semibold text-slate-900 dark:text-slate-100 truncate">
               {displayName}
             </span>
             {hasFriendly && channel.rawName && channel.rawName !== displayName && (
-              <span className="font-mono text-[10px] text-slate-400">({channel.rawName})</span>
+              <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
+                ({channel.rawName})
+              </span>
             )}
             {channel.mode === 'ST' && (
-              <span className="inline-flex items-center rounded bg-indigo-50 px-1 py-0 text-[9.5px] font-mono font-semibold text-indigo-700 border border-indigo-200">
+              <span className="inline-flex items-center rounded bg-indigo-50 dark:bg-indigo-950/70 px-1 py-0 text-[9.5px] font-mono font-semibold text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80">
                 ST{channel.stereoSide ? `·${channel.stereoSide}` : ''}
               </span>
             )}
             {channel.phantom48v && (
-              <span className="inline-flex items-center gap-0.5 rounded bg-rose-50 px-1 py-0 text-[9.5px] font-mono font-semibold text-rose-700 border border-rose-200">
+              <span className="inline-flex items-center gap-0.5 rounded bg-rose-50 dark:bg-rose-950/70 px-1 py-0 text-[9.5px] font-mono font-semibold text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/80">
                 <Zap className="w-2.5 h-2.5" />
                 +48V
               </span>
             )}
             {channel.gainDb !== undefined && channel.gainDb !== 0 && (
-              <span className="inline-flex items-center rounded bg-slate-100 px-1 py-0 text-[9.5px] font-mono text-slate-600">
+              <span className="inline-flex items-center rounded bg-slate-100 dark:bg-slate-800 px-1 py-0 text-[9.5px] font-mono text-slate-600 dark:text-slate-300">
                 {formatGain(channel.gainDb)}
               </span>
             )}
             {channel.consoleChannel && (
-              <span className="inline-flex items-center rounded bg-sky-50 px-1 py-0 text-[9.5px] font-mono font-medium text-sky-800 border border-sky-200/70">
+              <span className="inline-flex items-center rounded bg-sky-50 dark:bg-sky-950/70 px-1 py-0 text-[9.5px] font-mono font-medium text-sky-800 dark:text-sky-300 border border-sky-200/70 dark:border-sky-800/80">
                 {channel.consoleChannel}
                 {channel.channelStripName ? `: ${channel.channelStripName}` : ''}
               </span>
@@ -185,17 +190,21 @@ function ChannelTableRow({
           </div>
 
           {(channel.routeLabel || ann?.cableTag || ann?.notes) && (
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500 dark:text-slate-400">
               {channel.routeLabel && (
-                <span className="font-mono text-[10.5px] text-slate-600">{channel.routeLabel}</span>
+                <span className="font-mono text-[10.5px] text-slate-600 dark:text-slate-300">
+                  {channel.routeLabel}
+                </span>
               )}
               {ann?.cableTag && (
-                <span className="inline-flex items-center gap-0.5 rounded bg-amber-50 px-1 font-mono text-[10px] text-amber-800 border border-amber-200">
+                <span className="inline-flex items-center gap-0.5 rounded bg-amber-50 dark:bg-amber-950/70 px-1 font-mono text-[10px] text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/80">
                   <Cable className="w-2.5 h-2.5" />
                   {ann.cableTag}
                 </span>
               )}
-              {ann?.notes && <span className="text-slate-500 italic">{ann.notes}</span>}
+              {ann?.notes && (
+                <span className="text-slate-500 dark:text-slate-400 italic">{ann.notes}</span>
+              )}
             </div>
           )}
         </div>
@@ -206,7 +215,7 @@ function ChannelTableRow({
               type="button"
               title="Edit friendly label, cable tag, or notes"
               onClick={openEditor}
-              className="rounded p-1 text-slate-400 hover:bg-slate-200/70 hover:text-slate-800 cursor-pointer"
+              className="rounded p-1 text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 cursor-pointer"
             >
               <Pencil className="w-3.5 h-3.5" />
             </button>
@@ -214,7 +223,9 @@ function ChannelTableRow({
           <span
             title="Click to trace signal end-to-end"
             className={`rounded p-1 ${
-              isTraced ? 'text-sky-700' : 'text-slate-300 hover:text-sky-600'
+              isTraced
+                ? 'text-sky-700 dark:text-sky-400'
+                : 'text-slate-300 dark:text-slate-600 hover:text-sky-600 dark:hover:text-sky-400'
             }`}
           >
             <GitBranch className="w-3.5 h-3.5" />
@@ -226,11 +237,11 @@ function ChannelTableRow({
         <form
           onSubmit={saveEdit}
           onClick={(e) => e.stopPropagation()}
-          className="mx-3 mb-2.5 rounded-lg border border-slate-200 bg-slate-50 p-2.5 space-y-2"
+          className="mx-3 mb-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-2.5 space-y-2"
         >
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] font-semibold uppercase text-slate-500">
+              <label className="block text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">
                 Friendly Label
               </label>
               <input
@@ -238,11 +249,11 @@ function ChannelTableRow({
                 value={friendlyDraft}
                 onChange={(e) => setFriendlyDraft(e.target.value)}
                 placeholder={channel.rawName}
-                className="mt-0.5 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 focus:border-sky-500 focus:outline-none"
+                className="mt-0.5 w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-[10px] font-semibold uppercase text-slate-500">
+              <label className="block text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">
                 Cable / Snake Tag
               </label>
               <input
@@ -250,12 +261,12 @@ function ChannelTableRow({
                 value={cableDraft}
                 onChange={(e) => setCableDraft(e.target.value)}
                 placeholder="e.g. XLR-STG-01"
-                className="mt-0.5 w-full rounded border border-slate-300 bg-white px-2 py-1 font-mono text-xs text-slate-900 focus:border-sky-500 focus:outline-none"
+                className="mt-0.5 w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1 font-mono text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
               />
             </div>
           </div>
           <div>
-            <label className="block text-[10px] font-semibold uppercase text-slate-500">
+            <label className="block text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">
               Notes
             </label>
             <input
@@ -263,20 +274,20 @@ function ChannelTableRow({
               value={notesDraft}
               onChange={(e) => setNotesDraft(e.target.value)}
               placeholder="DI box, stage position, phantom notes..."
-              className="mt-0.5 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 focus:border-sky-500 focus:outline-none"
+              className="mt-0.5 w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
             />
           </div>
           <div className="flex justify-end gap-1.5">
             <button
               type="button"
               onClick={() => setEditing(false)}
-              className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100 cursor-pointer"
+              className="rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="inline-flex items-center gap-1 rounded bg-slate-900 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-slate-800 cursor-pointer"
+              className="inline-flex items-center gap-1 rounded bg-slate-900 dark:bg-sky-500 px-2.5 py-1 text-[11px] font-medium text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-sky-400 cursor-pointer"
             >
               <Check className="w-3 h-3" />
               Save
@@ -292,6 +303,7 @@ function TrunkInspectorView({
   rig,
   trunk,
   editMode,
+  isDark,
   trace,
   onClearSelection,
   onRunTrace,
@@ -332,48 +344,48 @@ function TrunkInspectorView({
   }, [activeList, filter, rig]);
 
   return (
-    <aside className="flex h-full w-full flex-col border-l border-slate-200 bg-white">
-      <div className="border-b border-slate-200 px-4 py-3">
+    <aside className="flex h-full w-full flex-col border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+      <div className="border-b border-slate-200 dark:border-slate-800 px-4 py-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span
                 style={{
-                  backgroundColor: proto.bg,
-                  color: proto.text,
-                  borderColor: proto.border,
+                  backgroundColor: isDark ? proto.darkBg : proto.bg,
+                  color: isDark ? proto.darkText : proto.text,
+                  borderColor: isDark ? proto.darkBorder : proto.border,
                 }}
                 className="inline-flex items-center rounded border px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase"
               >
                 {proto.label}
               </span>
               {resolveTrunkCableTag(rig, trunk) && (
-                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600">
+                <span className="inline-flex items-center gap-1 rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-600 dark:text-slate-300">
                   <Cable className="w-3 h-3" />
                   {resolveTrunkCableTag(rig, trunk)}
                 </span>
               )}
             </div>
-            <h2 className="mt-1.5 text-sm font-bold text-slate-900 truncate">
+            <h2 className="mt-1.5 text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
               {resolveTrunkName(rig, trunk)}
             </h2>
-            <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500 flex-wrap">
+            <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
               <button
                 type="button"
                 onClick={() => srcNode && onSelectNode(srcNode.id)}
-                className="font-medium text-slate-700 hover:text-sky-700 hover:underline cursor-pointer"
+                className="font-medium text-slate-700 dark:text-slate-200 hover:text-sky-700 dark:hover:text-sky-400 hover:underline cursor-pointer"
               >
                 {srcNode ? resolveNodeName(rig, srcNode) : trunk.sourceNodeId} ({trunk.sourcePortGroup})
               </button>
               {trunk.returnChannels.length > 0 ? (
-                <ArrowLeftRight className="w-3.5 h-3.5 text-slate-400" />
+                <ArrowLeftRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
               ) : (
-                <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+                <ArrowRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
               )}
               <button
                 type="button"
                 onClick={() => tgtNode && onSelectNode(tgtNode.id)}
-                className="font-medium text-slate-700 hover:text-sky-700 hover:underline cursor-pointer"
+                className="font-medium text-slate-700 dark:text-slate-200 hover:text-sky-700 dark:hover:text-sky-400 hover:underline cursor-pointer"
               >
                 {tgtNode ? resolveNodeName(rig, tgtNode) : trunk.targetNodeId} ({trunk.targetPortGroup})
               </button>
@@ -386,7 +398,7 @@ function TrunkInspectorView({
                 type="button"
                 title="Delete manual trunk"
                 onClick={() => onDeleteManualTrunk(trunk.id)}
-                className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50 cursor-pointer"
+                className="rounded-lg p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -394,7 +406,7 @@ function TrunkInspectorView({
             <button
               type="button"
               onClick={onClearSelection}
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -403,10 +415,10 @@ function TrunkInspectorView({
 
         {/* Edit Mode inline trunk annotations */}
         {editMode ? (
-          <div className="mt-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+          <div className="mt-3 space-y-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-2.5">
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-[10px] font-semibold uppercase text-slate-500">
+                <label className="block text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">
                   Friendly Trunk Name
                 </label>
                 <input
@@ -418,11 +430,11 @@ function TrunkInspectorView({
                     })
                   }
                   placeholder={trunk.label}
-                  className="mt-0.5 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-sky-500 focus:outline-none"
+                  className="mt-0.5 w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-semibold uppercase text-slate-500">
+                <label className="block text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">
                   Physical Cable Tag
                 </label>
                 <input
@@ -434,12 +446,12 @@ function TrunkInspectorView({
                     })
                   }
                   placeholder="CAT6-FOH-01"
-                  className="mt-0.5 w-full rounded border border-slate-300 bg-white px-2 py-1 font-mono text-xs focus:border-sky-500 focus:outline-none"
+                  className="mt-0.5 w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1 font-mono text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-[10px] font-semibold uppercase text-slate-500">
+              <label className="block text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">
                 Cable Run Notes
               </label>
               <textarea
@@ -449,13 +461,13 @@ function TrunkInspectorView({
                   onUpdateTrunkAnnotation(trunk.id, { notes: e.target.value || undefined })
                 }
                 placeholder="Conduit path, cable length, clock master notes..."
-                className="mt-0.5 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-sky-500 focus:outline-none"
+                className="mt-0.5 w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
               />
             </div>
           </div>
         ) : (
           ann?.notes && (
-            <p className="mt-2 rounded-lg bg-slate-50 border border-slate-200/80 px-2.5 py-1.5 text-xs text-slate-600">
+            <p className="mt-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 px-2.5 py-1.5 text-xs text-slate-600 dark:text-slate-300">
               {ann.notes}
             </p>
           )
@@ -468,8 +480,8 @@ function TrunkInspectorView({
             onClick={() => setDirectionTab('forward')}
             className={`flex-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
               directionTab === 'forward'
-                ? 'bg-slate-900 text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
             Forward ({trunk.channels.length})
@@ -480,8 +492,8 @@ function TrunkInspectorView({
               onClick={() => setDirectionTab('return')}
               className={`flex-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
                 directionTab === 'return'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               Return ({trunk.returnChannels.length})
@@ -490,20 +502,20 @@ function TrunkInspectorView({
         </div>
 
         <div className="relative mt-2.5">
-          <Search className="pointer-events-none absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
+          <Search className="pointer-events-none absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
           <input
             type="text"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filter slots, names, +48V, cable tags..."
-            className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-3 py-1.5 text-xs text-slate-800 focus:border-sky-500 focus:bg-white focus:outline-none"
+            className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 pl-8 pr-3 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none"
           />
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
         {filteredChannels.length === 0 ? (
-          <div className="p-6 text-center text-xs text-slate-500">
+          <div className="p-6 text-center text-xs text-slate-500 dark:text-slate-400">
             No matching channels in this direction.
           </div>
         ) : (
@@ -538,6 +550,7 @@ function NodeInspectorView({
   rig,
   node,
   editMode,
+  isDark,
   trace,
   onClearSelection,
   onRunTrace,
@@ -590,21 +603,23 @@ function NodeInspectorView({
   }, [node.portGroups, selectedGroupId, filter, rig]);
 
   return (
-    <aside className="flex h-full w-full flex-col border-l border-slate-200 bg-white">
-      <div className="border-b border-slate-200 px-4 py-3">
+    <aside className="flex h-full w-full flex-col border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+      <div className="border-b border-slate-200 dark:border-slate-800 px-4 py-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-700">
+              <span className="inline-flex items-center rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                 {displayZone}
               </span>
-              <span className="font-mono text-[10.5px] text-slate-500">{node.model}</span>
+              <span className="font-mono text-[10.5px] text-slate-500 dark:text-slate-400">
+                {node.model}
+              </span>
             </div>
-            <h2 className="mt-1 text-sm font-bold text-slate-900 truncate">
+            <h2 className="mt-1 text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
               {resolveNodeName(rig, node)}
             </h2>
             {snapshotMeta && (
-              <div className="mt-0.5 font-mono text-[10.5px] text-sky-700">
+              <div className="mt-0.5 font-mono text-[10.5px] text-sky-700 dark:text-sky-400">
                 Synced: {snapshotMeta.fileName} ({snapshotMeta.creator} {snapshotMeta.creatorVersion})
               </div>
             )}
@@ -615,7 +630,7 @@ function NodeInspectorView({
               type="button"
               title="Highlight connected trunks"
               onClick={() => onRunTrace({ type: 'node', nodeId: node.id })}
-              className="rounded-lg p-1.5 text-sky-700 hover:bg-sky-50 cursor-pointer"
+              className="rounded-lg p-1.5 text-sky-700 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/60 cursor-pointer"
             >
               <GitBranch className="w-4 h-4" />
             </button>
@@ -624,7 +639,7 @@ function NodeInspectorView({
                 type="button"
                 title="Delete manual device"
                 onClick={() => onDeleteManualNode(node.id)}
-                className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50 cursor-pointer"
+                className="rounded-lg p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -632,7 +647,7 @@ function NodeInspectorView({
             <button
               type="button"
               onClick={onClearSelection}
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -641,10 +656,10 @@ function NodeInspectorView({
 
         {/* Edit Mode inline device annotations */}
         {editMode ? (
-          <div className="mt-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+          <div className="mt-3 space-y-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-2.5">
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-[10px] font-semibold uppercase text-slate-500">
+                <label className="block text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">
                   Friendly Label
                 </label>
                 <input
@@ -656,11 +671,11 @@ function NodeInspectorView({
                     })
                   }
                   placeholder={node.rawName}
-                  className="mt-0.5 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-sky-500 focus:outline-none"
+                  className="mt-0.5 w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-semibold uppercase text-slate-500">
+                <label className="block text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">
                   Zone
                 </label>
                 <select
@@ -668,7 +683,7 @@ function NodeInspectorView({
                   onChange={(e) =>
                     onUpdateNodeAnnotation(node.id, { zone: e.target.value as RigZone })
                   }
-                  className="mt-0.5 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-sky-500 focus:outline-none"
+                  className="mt-0.5 w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                 >
                   {ZONES.map((z) => (
                     <option key={z} value={z}>
@@ -679,7 +694,7 @@ function NodeInspectorView({
               </div>
             </div>
             <div>
-              <label className="block text-[10px] font-semibold uppercase text-slate-500">
+              <label className="block text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">
                 Rack / Setup Notes
               </label>
               <textarea
@@ -689,13 +704,13 @@ function NodeInspectorView({
                   onUpdateNodeAnnotation(node.id, { notes: e.target.value || undefined })
                 }
                 placeholder="Clock sync, IP address, power sequence, rack location..."
-                className="mt-0.5 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-sky-500 focus:outline-none"
+                className="mt-0.5 w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
               />
             </div>
           </div>
         ) : (
           ann?.notes && (
-            <p className="mt-2 rounded-lg bg-slate-50 border border-slate-200/80 px-2.5 py-1.5 text-xs text-slate-600">
+            <p className="mt-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 px-2.5 py-1.5 text-xs text-slate-600 dark:text-slate-300">
               {ann.notes}
             </p>
           )
@@ -711,9 +726,12 @@ function NodeInspectorView({
                   key={t.id}
                   type="button"
                   onClick={() => onSelectTrunk(t.id)}
-                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:border-slate-400 cursor-pointer"
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:text-slate-200 hover:border-slate-400 dark:hover:border-slate-500 cursor-pointer"
                 >
-                  <span style={{ backgroundColor: p.color }} className="h-2 w-2 rounded-full" />
+                  <span
+                    style={{ backgroundColor: isDark ? p.darkColor : p.color }}
+                    className="h-2 w-2 rounded-full"
+                  />
                   {resolveTrunkName(rig, t)}
                 </button>
               );
@@ -728,8 +746,8 @@ function NodeInspectorView({
             onClick={() => setTab('io')}
             className={`flex-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
               tab === 'io'
-                ? 'bg-slate-900 text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
             I/O Patch ({node.portGroups.reduce((s, pg) => s + pg.channels.length, 0)})
@@ -740,8 +758,8 @@ function NodeInspectorView({
               onClick={() => setTab('buses')}
               className={`flex-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
                 tab === 'buses'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               Mix Buses ({node.mixBuses.length})
@@ -758,8 +776,8 @@ function NodeInspectorView({
                   onClick={() => setSelectedGroupId('all')}
                   className={`rounded-md px-2 py-0.5 text-[11px] font-medium cursor-pointer ${
                     selectedGroupId === 'all'
-                      ? 'bg-sky-600 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      ? 'bg-sky-600 dark:bg-sky-500 text-white dark:text-slate-950'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
                 >
                   All ({node.portGroups.length})
@@ -771,8 +789,8 @@ function NodeInspectorView({
                     onClick={() => setSelectedGroupId(pg.id)}
                     className={`rounded-md px-2 py-0.5 font-mono text-[10.5px] font-medium cursor-pointer ${
                       selectedGroupId === pg.id
-                        ? 'bg-sky-600 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        ? 'bg-sky-600 dark:bg-sky-500 text-white dark:text-slate-950'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                     }`}
                   >
                     {pg.direction === 'output' ? 'OUT' : 'IN'}·{pg.code} ({pg.channels.length})
@@ -782,13 +800,13 @@ function NodeInspectorView({
             )}
 
             <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
+              <Search className="pointer-events-none absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
               <input
                 type="text"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="Filter channels, +48V, CH #..."
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-3 py-1.5 text-xs text-slate-800 focus:border-sky-500 focus:bg-white focus:outline-none"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 pl-8 pr-3 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none"
               />
             </div>
           </div>
@@ -798,17 +816,17 @@ function NodeInspectorView({
       <div className="flex-1 overflow-y-auto">
         {tab === 'io' ? (
           visiblePortGroups.length === 0 ? (
-            <div className="p-6 text-center text-xs text-slate-500">
+            <div className="p-6 text-center text-xs text-slate-500 dark:text-slate-400">
               No matching channels on this device.
             </div>
           ) : (
             visiblePortGroups.map((pg) => (
               <div key={pg.id}>
-                <div className="sticky top-0 z-10 flex items-center justify-between border-y border-slate-200 bg-slate-50/95 backdrop-blur-xs px-3 py-1.5">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                <div className="sticky top-0 z-10 flex items-center justify-between border-y border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-950/90 backdrop-blur-xs px-3 py-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                     {pg.label}
                   </span>
-                  <span className="font-mono text-[10px] text-slate-500">
+                  <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
                     {pg.direction.toUpperCase()} · {pg.channels.length}/{pg.capacity}
                   </span>
                 </div>
@@ -836,7 +854,7 @@ function NodeInspectorView({
             ))
           )
         ) : (
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
             {node.mixBuses.map((bus) => {
               const isTraced = tracedBusIds.has(bus.id);
               const busAnn = rig.annotations.buses[bus.id];
@@ -853,7 +871,9 @@ function NodeInspectorView({
                     })
                   }
                   className={`px-3 py-2.5 transition-colors cursor-pointer ${
-                    isTraced ? 'bg-sky-50' : 'hover:bg-slate-50'
+                    isTraced
+                      ? 'bg-sky-50 dark:bg-sky-950/60'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -861,32 +881,34 @@ function NodeInspectorView({
                       <span
                         className={`inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase ${
                           bus.kind === 'main'
-                            ? 'bg-slate-900 text-white'
+                            ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950'
                             : bus.kind === 'mon'
-                              ? 'bg-amber-100 text-amber-900'
+                              ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-300'
                               : bus.kind === 'mtx'
-                                ? 'bg-indigo-100 text-indigo-900'
-                                : 'bg-sky-100 text-sky-900'
+                                ? 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-900 dark:text-indigo-300'
+                                : 'bg-sky-100 dark:bg-sky-950/80 text-sky-900 dark:text-sky-300'
                         }`}
                       >
                         {bus.kind} {bus.index}
                       </span>
-                      <span className="truncate text-[12.5px] font-semibold text-slate-900">
+                      <span className="truncate text-[12.5px] font-semibold text-slate-900 dark:text-slate-100">
                         {resolveBusName(rig, bus)}
                       </span>
-                      <span className="rounded bg-slate-100 px-1 py-0 text-[9.5px] font-mono text-slate-600">
+                      <span className="rounded bg-slate-100 dark:bg-slate-800 px-1 py-0 text-[9.5px] font-mono text-slate-600 dark:text-slate-300">
                         {bus.mono ? 'MONO' : 'ST'}
                       </span>
                     </div>
                     <GitBranch
                       className={`w-3.5 h-3.5 shrink-0 ${
-                        isTraced ? 'text-sky-600' : 'text-slate-300'
+                        isTraced
+                          ? 'text-sky-600 dark:text-sky-400'
+                          : 'text-slate-300 dark:text-slate-600'
                       }`}
                     />
                   </div>
 
                   {bus.monitorSource && (
-                    <div className="mt-1 font-mono text-[10.5px] text-amber-800">
+                    <div className="mt-1 font-mono text-[10.5px] text-amber-800 dark:text-amber-300">
                       Source tap: {bus.monitorSource.rawRef}
                     </div>
                   )}
@@ -896,7 +918,7 @@ function NodeInspectorView({
                       {bus.outputs.map((out) => (
                         <span
                           key={`${out.group}-${out.slot}`}
-                          className="rounded border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-600"
+                          className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 px-1.5 py-0.5 font-mono text-[10px] text-slate-600 dark:text-slate-300"
                         >
                           Out {out.group}.{out.slot}
                           {out.stereoSide ? ` (${out.stereoSide})` : ''}
@@ -919,7 +941,7 @@ function NodeInspectorView({
                           })
                         }
                         placeholder="Friendly bus label..."
-                        className="flex-1 rounded border border-slate-200 bg-white px-2 py-1 text-[11px] focus:border-sky-500 focus:outline-none"
+                        className="flex-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-[11px] text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                       />
                     </div>
                   )}
@@ -936,6 +958,7 @@ function NodeInspectorView({
 function OverviewInspectorView({
   rig,
   editMode,
+  isDark,
   onSelectNode,
   onSelectTrunk,
   onDismissOrphan,
@@ -943,13 +966,13 @@ function OverviewInspectorView({
   onResetDemo,
 }: SideInspectorProps) {
   return (
-    <aside className="flex h-full w-full flex-col border-l border-slate-200 bg-white">
-      <div className="border-b border-slate-200 px-4 py-3.5">
+    <aside className="flex h-full w-full flex-col border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+      <div className="border-b border-slate-200 dark:border-slate-800 px-4 py-3.5">
         <div className="flex items-center gap-2">
-          <Layers className="w-4 h-4 text-sky-700" />
-          <h2 className="text-sm font-bold text-slate-900">Rig Inspector</h2>
+          <Layers className="w-4 h-4 text-sky-700 dark:text-sky-400" />
+          <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Rig Inspector</h2>
         </div>
-        <p className="mt-1 text-xs leading-relaxed text-slate-500">
+        <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
           Select any hardware block or cable trunk on the diagram to inspect 1–48 channel patch lists
           and trace signals end-to-end.
         </p>
@@ -958,25 +981,35 @@ function OverviewInspectorView({
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
         {/* Quick Metrics */}
         <div className="grid grid-cols-3 gap-2">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-center">
-            <div className="font-mono text-lg font-bold text-slate-900">{rig.nodes.length}</div>
-            <div className="text-[10.5px] font-medium text-slate-500">Devices</div>
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-2.5 text-center">
+            <div className="font-mono text-lg font-bold text-slate-900 dark:text-slate-100">
+              {rig.nodes.length}
+            </div>
+            <div className="text-[10.5px] font-medium text-slate-500 dark:text-slate-400">
+              Devices
+            </div>
           </div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-center">
-            <div className="font-mono text-lg font-bold text-slate-900">{rig.trunks.length}</div>
-            <div className="text-[10.5px] font-medium text-slate-500">Trunks</div>
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-2.5 text-center">
+            <div className="font-mono text-lg font-bold text-slate-900 dark:text-slate-100">
+              {rig.trunks.length}
+            </div>
+            <div className="text-[10.5px] font-medium text-slate-500 dark:text-slate-400">
+              Trunks
+            </div>
           </div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-center">
-            <div className="font-mono text-lg font-bold text-sky-700">
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-2.5 text-center">
+            <div className="font-mono text-lg font-bold text-sky-700 dark:text-sky-400">
               {rig.sourceSnapshots.length}
             </div>
-            <div className="text-[10.5px] font-medium text-slate-500">.snap Syncs</div>
+            <div className="text-[10.5px] font-medium text-slate-500 dark:text-slate-400">
+              .snap Syncs
+            </div>
           </div>
         </div>
 
         {/* Devices quick list */}
         <div>
-          <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Hardware Blocks
           </h3>
           <div className="space-y-1.5">
@@ -985,17 +1018,17 @@ function OverviewInspectorView({
                 key={n.id}
                 type="button"
                 onClick={() => onSelectNode(n.id)}
-                className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-left hover:border-sky-400 hover:bg-sky-50/40 transition-colors cursor-pointer"
+                className="flex w-full items-center justify-between rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 px-3 py-2 text-left hover:border-sky-400 dark:hover:border-sky-500 hover:bg-sky-50/40 dark:hover:bg-sky-950/40 transition-colors cursor-pointer"
               >
                 <div className="min-w-0">
-                  <div className="truncate text-xs font-semibold text-slate-900">
+                  <div className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100">
                     {resolveNodeName(rig, n)}
                   </div>
-                  <div className="truncate text-[11px] text-slate-500">
+                  <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">
                     {n.model} · {resolveNodeZone(rig, n)}
                   </div>
                 </div>
-                <Sliders className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <Sliders className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
               </button>
             ))}
           </div>
@@ -1003,7 +1036,7 @@ function OverviewInspectorView({
 
         {/* Trunks quick list */}
         <div>
-          <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Signal Trunks
           </h3>
           <div className="space-y-1.5">
@@ -1014,18 +1047,18 @@ function OverviewInspectorView({
                   key={t.id}
                   type="button"
                   onClick={() => onSelectTrunk(t.id)}
-                  className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left hover:border-sky-400 hover:bg-sky-50/40 transition-colors cursor-pointer"
+                  className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 px-3 py-2 text-left hover:border-sky-400 dark:hover:border-sky-500 hover:bg-sky-50/40 dark:hover:bg-sky-950/40 transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <span
-                      style={{ backgroundColor: p.color }}
+                      style={{ backgroundColor: isDark ? p.darkColor : p.color }}
                       className="h-2.5 w-2.5 shrink-0 rounded-full"
                     />
-                    <span className="truncate text-xs font-semibold text-slate-800">
+                    <span className="truncate text-xs font-semibold text-slate-800 dark:text-slate-200">
                       {resolveTrunkName(rig, t)}
                     </span>
                   </div>
-                  <span className="shrink-0 font-mono text-[10.5px] text-slate-500">
+                  <span className="shrink-0 font-mono text-[10.5px] text-slate-500 dark:text-slate-400">
                     {t.channels.length}
                     {t.returnChannels.length ? ` ↔ ${t.returnChannels.length}` : ' ch'}
                   </span>
@@ -1037,33 +1070,37 @@ function OverviewInspectorView({
 
         {/* Orphaned Annotations Tracker */}
         {rig.annotations.orphaned.length > 0 && (
-          <div className="rounded-xl border border-amber-300 bg-amber-50/70 p-3">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
-              <AlertTriangle className="w-4 h-4 text-amber-600" />
+          <div className="rounded-xl border border-amber-300 dark:border-amber-700/80 bg-amber-50/70 dark:bg-amber-950/40 p-3">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900 dark:text-amber-200">
+              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
               Archived Annotations ({rig.annotations.orphaned.length})
             </div>
-            <p className="mt-1 text-[11px] text-amber-800">
+            <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-300/90">
               Preserved from previous snapshots when channels or buses were unpatched.
             </p>
             <div className="mt-2 space-y-1.5">
               {rig.annotations.orphaned.map((o) => (
                 <div
                   key={o.key}
-                  className="flex items-start justify-between gap-2 rounded-lg border border-amber-200 bg-white p-2 text-[11px]"
+                  className="flex items-start justify-between gap-2 rounded-lg border border-amber-200 dark:border-amber-800/70 bg-white dark:bg-slate-900 p-2 text-[11px]"
                 >
                   <div className="min-w-0">
-                    <div className="font-semibold text-slate-800">
+                    <div className="font-semibold text-slate-800 dark:text-slate-100">
                       {o.friendlyName || o.lastKnownName}
                     </div>
-                    <div className="font-mono text-[10px] text-slate-500">{o.key}</div>
-                    {o.notes && <div className="text-slate-600 mt-0.5">{o.notes}</div>}
+                    <div className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                      {o.key}
+                    </div>
+                    {o.notes && (
+                      <div className="text-slate-600 dark:text-slate-300 mt-0.5">{o.notes}</div>
+                    )}
                   </div>
                   {editMode && (
                     <button
                       type="button"
                       title="Dismiss archived annotation"
                       onClick={() => onDismissOrphan(o.key)}
-                      className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
+                      className="rounded p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -1075,11 +1112,11 @@ function OverviewInspectorView({
         )}
 
         {/* Quick Actions */}
-        <div className="border-t border-slate-200 pt-3 space-y-2">
+        <div className="border-t border-slate-200 dark:border-slate-800 pt-3 space-y-2">
           <button
             type="button"
             onClick={onOpenSnapImport}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-700 cursor-pointer"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 dark:bg-sky-500 px-3 py-2 text-xs font-semibold text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-400 cursor-pointer"
           >
             <Edit3 className="w-3.5 h-3.5" />
             Import Behringer WING .snap
@@ -1087,7 +1124,7 @@ function OverviewInspectorView({
           <button
             type="button"
             onClick={onResetDemo}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 cursor-pointer"
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             Reset to Sanctuary Demo Rig

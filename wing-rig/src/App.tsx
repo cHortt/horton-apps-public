@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useRigStore } from './store/useRigStore';
+import { useTheme } from './store/useTheme';
 import { TopBar } from './components/TopBar';
 import { SystemCanvas } from './components/canvas/SystemCanvas';
 import { SideInspector } from './components/inspector/SideInspector';
@@ -11,6 +12,7 @@ import type { SearchHit } from './schema/rig';
 
 export function App() {
   const store = useRigStore();
+  const { isDark, toggleTheme } = useTheme();
   const [snapModalOpen, setSnapModalOpen] = useState(false);
   const [addGearModalOpen, setAddGearModalOpen] = useState(false);
 
@@ -24,11 +26,13 @@ export function App() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-slate-50 text-slate-900">
+    <div className="flex h-full flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <TopBar
         rig={store.rig}
         editMode={store.editMode}
         view={store.view}
+        isDark={isDark}
+        onToggleTheme={toggleTheme}
         onToggleEditMode={() => store.setEditMode(!store.editMode)}
         onUpdateRigName={(name) => store.updateRigMeta({ name })}
         onToggleView={store.setView}
@@ -50,6 +54,7 @@ export function App() {
               <SystemCanvas
                 rig={store.rig}
                 editMode={store.editMode}
+                isDark={isDark}
                 selection={store.selection}
                 trace={store.trace}
                 onSelectNode={store.selectNode}
@@ -65,6 +70,7 @@ export function App() {
             <SideInspector
               rig={store.rig}
               editMode={store.editMode}
+              isDark={isDark}
               selection={store.selection}
               trace={store.trace}
               onSelectNode={store.selectNode}

@@ -3,7 +3,6 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  MiniMap,
   ReactFlow,
   type EdgeTypes,
   type NodeMouseHandler,
@@ -27,6 +26,7 @@ import { TraceBanner } from './TraceBanner';
 interface SystemCanvasProps {
   rig: RigDocument;
   editMode: boolean;
+  isDark: boolean;
   selection: SelectionState;
   trace: TraceResult | null;
   onSelectNode: (id: string) => void;
@@ -71,6 +71,7 @@ function chooseHandles(
 export function SystemCanvas({
   rig,
   editMode,
+  isDark,
   selection,
   trace,
   onSelectNode,
@@ -137,12 +138,13 @@ export function SystemCanvas({
             displayName: resolveTrunkName(rig, trunk),
             cableTag: resolveTrunkCableTag(rig, trunk),
             isSelected: selection?.type === 'trunk' && selection.id === trunk.id,
+            isDark,
             traceState,
             onSelect: onSelectTrunk,
           },
         };
       }),
-    [rig, selection, trace, activeTrunkSet, onSelectTrunk],
+    [rig, selection, isDark, trace, activeTrunkSet, onSelectTrunk],
   );
 
   const handleNodeClick: NodeMouseHandler<HardwareFlowNode> = useCallback(
@@ -167,7 +169,7 @@ export function SystemCanvas({
   }, [rig.trunks]);
 
   return (
-    <div className="relative h-full w-full bg-slate-50">
+    <div className="relative h-full w-full bg-slate-50 dark:bg-slate-950">
       {trace && (
         <TraceBanner
           trace={trace}
@@ -194,25 +196,18 @@ export function SystemCanvas({
         maxZoom={1.75}
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} color="#cbd5e1" />
-        <Controls showInteractive={false} position="bottom-left" />
-        <MiniMap
-          position="bottom-right"
-          nodeStrokeWidth={2}
-          nodeColor={(n) => {
-            const d = n.data as HardwareFlowNode['data'] | undefined;
-            if (!d) return '#94a3b8';
-            if (d.traceState === 'active') return '#0284c7';
-            if (d.hardware.kind === 'console') return '#0f172a';
-            return '#cbd5e1';
-          }}
-          maskColor="rgba(248, 250, 252, 0.72)"
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={22}
+          size={1.2}
+          color={isDark ? '#334155' : '#cbd5e1'}
         />
+        <Controls showInteractive={false} position="bottom-left" />
       </ReactFlow>
 
       {/* Protocol Legend & Read-Only / Edit status pill */}
-      <div className="pointer-events-auto absolute bottom-3 left-14 z-10 hidden sm:flex items-center gap-2 rounded-lg border border-slate-200 bg-white/92 backdrop-blur-xs px-3 py-1.5 shadow-xs">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+      <div className="pointer-events-auto absolute bottom-3 left-14 z-10 hidden sm:flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white/92 dark:bg-slate-900/92 backdrop-blur-xs px-3 py-1.5 shadow-xs">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
           Trunks
         </span>
         {usedProtocols.map((protocol) => {
@@ -220,18 +215,18 @@ export function SystemCanvas({
           return (
             <span
               key={protocol}
-              className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-700"
+              className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-200"
             >
               <span
-                style={{ backgroundColor: meta.color }}
+                style={{ backgroundColor: isDark ? meta.darkColor : meta.color }}
                 className="h-2 w-4 rounded-full"
               />
               {meta.shortLabel}
             </span>
           );
         })}
-        <span className="mx-1 h-3.5 w-px bg-slate-200" />
-        <span className="text-[11px] text-slate-500">
+        <span className="mx-1 h-3.5 w-px bg-slate-200 dark:bg-slate-700" />
+        <span className="text-[11px] text-slate-500 dark:text-slate-400">
           {editMode ? 'Drag devices to arrange' : 'Click any device or trunk to inspect & trace'}
         </span>
       </div>

@@ -26,7 +26,18 @@ export interface ValidationResult {
 
 export const PROTOCOL_META: Record<
   TrunkProtocol,
-  { label: string; shortLabel: string; color: string; bg: string; border: string; text: string }
+  {
+    label: string;
+    shortLabel: string;
+    color: string;
+    bg: string;
+    border: string;
+    text: string;
+    darkColor: string;
+    darkBg: string;
+    darkBorder: string;
+    darkText: string;
+  }
 > = {
   aes50: {
     label: 'AES50 SuperMAC',
@@ -35,6 +46,10 @@ export const PROTOCOL_META: Record<
     bg: '#e0f2fe',
     border: '#38bdf8',
     text: '#0369a1',
+    darkColor: '#38bdf8',
+    darkBg: '#0c4a6e',
+    darkBorder: '#0284c7',
+    darkText: '#bae6fd',
   },
   'analog-xlr': {
     label: 'Analog XLR',
@@ -43,6 +58,10 @@ export const PROTOCOL_META: Record<
     bg: '#fef3c7',
     border: '#fbbf24',
     text: '#b45309',
+    darkColor: '#fbbf24',
+    darkBg: '#78350f',
+    darkBorder: '#d97706',
+    darkText: '#fde68a',
   },
   'analog-trs': {
     label: 'Analog TRS / Aux',
@@ -51,6 +70,10 @@ export const PROTOCOL_META: Record<
     bg: '#fef9c3',
     border: '#facc15',
     text: '#a16207',
+    darkColor: '#facc15',
+    darkBg: '#713f12',
+    darkBorder: '#ca8a04',
+    darkText: '#fef08a',
   },
   dante: {
     label: 'Dante / AoIP',
@@ -59,6 +82,10 @@ export const PROTOCOL_META: Record<
     bg: '#ccfbf1',
     border: '#2dd4bf',
     text: '#0f766e',
+    darkColor: '#2dd4bf',
+    darkBg: '#134e4a',
+    darkBorder: '#0d9488',
+    darkText: '#99f6e4',
   },
   usb: {
     label: 'USB Audio',
@@ -67,6 +94,10 @@ export const PROTOCOL_META: Record<
     bg: '#e0e7ff',
     border: '#818cf8',
     text: '#4338ca',
+    darkColor: '#818cf8',
+    darkBg: '#312e81',
+    darkBorder: '#4f46e5',
+    darkText: '#c7d2fe',
   },
   stageconnect: {
     label: 'StageCONNECT',
@@ -75,6 +106,10 @@ export const PROTOCOL_META: Record<
     bg: '#d1fae5',
     border: '#34d399',
     text: '#047857',
+    darkColor: '#34d399',
+    darkBg: '#064e3b',
+    darkBorder: '#059669',
+    darkText: '#a7f3d0',
   },
   network: {
     label: 'Control / Network',
@@ -83,6 +118,10 @@ export const PROTOCOL_META: Record<
     bg: '#f1f5f9',
     border: '#94a3b8',
     text: '#334155',
+    darkColor: '#94a3b8',
+    darkBg: '#1e293b',
+    darkBorder: '#475569',
+    darkText: '#cbd5e1',
   },
 };
 
