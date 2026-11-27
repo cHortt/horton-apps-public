@@ -16,6 +16,7 @@ import {
   Pencil,
   RotateCcw,
   Search,
+  SlidersHorizontal,
   Trash2,
   VolumeX,
   X,
@@ -50,6 +51,7 @@ import {
   traceSignal,
 } from '../../schema/helpers';
 import type { SelectionState } from '../../store/useRigStore';
+import type { SheetDetent } from './mobileSheet';
 import {
   ZONE_ORDER,
   buildConsoleBusRows,
@@ -79,6 +81,9 @@ export interface SideInspectorProps {
   isDark: boolean;
   selection: SelectionState;
   trace: TraceResult | null;
+  mobileSheetMode?: boolean;
+  mobileDetent?: SheetDetent;
+  onChangeMobileDetent?: (detent: SheetDetent) => void;
   onSelectNode: (id: string) => void;
   onSelectTrunk: (id: string) => void;
   onClearSelection: () => void;
@@ -144,6 +149,45 @@ export function SideInspector(props: SideInspectorProps) {
   return <OverviewInspectorView {...props} />;
 }
 
+function MobileFullTraceBar({
+  trace,
+  onShowMap,
+  onClearTrace,
+}: {
+  trace: TraceResult;
+  onShowMap: () => void;
+  onClearTrace: () => void;
+}) {
+  return (
+    <div className="mt-2 flex items-center justify-between gap-2 rounded-[2px] border border-sky-400/70 dark:border-sky-600/80 bg-sky-50/90 dark:bg-sky-950/50 px-2.5 py-1.5 text-xs">
+      <div className="min-w-0 flex items-center gap-1.5">
+        <GitBranch className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+        <span className="truncate font-semibold text-sky-900 dark:text-sky-100">
+          {trace.title}
+        </span>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          type="button"
+          onClick={onShowMap}
+          className="inline-flex items-center gap-0.5 rounded-[1px] bg-sky-600 dark:bg-sky-500 px-2 py-0.5 font-mono text-[10.5px] font-semibold text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-400 cursor-pointer"
+        >
+          <span>Show Map</span>
+          <ChevronDown className="w-3 h-3" />
+        </button>
+        <button
+          type="button"
+          aria-label="Clear trace"
+          onClick={onClearTrace}
+          className="rounded-[1px] p-1 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/60 cursor-pointer"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // =============================================================================
 // Shared Scannable Channel Row (Occupied + Recessed Vacant)
 // =============================================================================
@@ -198,7 +242,7 @@ function ChannelInspectorRow({
   // Recessed, low-noise row for vacant / unused slots
   if (row.isVacant || !channel) {
     return (
-      <div className="flex items-center gap-2 border-b border-slate-100/90 dark:border-slate-800/60 last:border-b-0 bg-slate-50/45 dark:bg-[#0b111d]/55 px-3 py-1 select-none">
+      <div className="flex items-center gap-2 border-b border-slate-100/90 dark:border-slate-800/60 last:border-b-0 bg-slate-50/45 dark:bg-[#0b111d]/55 px-3 py-1.5 lg:py-1 select-none">
         <span className="inline-flex h-5 w-7 shrink-0 items-center justify-center rounded-[1px] border border-dashed border-slate-300/90 dark:border-slate-700/80 font-mono text-[10.5px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
           {row.slotLabel}
         </span>
@@ -256,7 +300,7 @@ function ChannelInspectorRow({
             onToggleExpandAndTrace();
           }
         }}
-        className="flex items-center gap-2 px-3 py-1.5 cursor-pointer"
+        className="flex items-center gap-1.5 lg:gap-2 px-3 py-2 lg:py-1.5 cursor-pointer"
       >
         {/* Col 1: Fixed-width tabular slot badge */}
         <span
@@ -589,7 +633,11 @@ function TrunkInspectorView({
   editMode,
   isDark,
   trace,
+  mobileSheetMode = false,
+  mobileDetent,
+  onChangeMobileDetent,
   onClearSelection,
+  onClearTrace,
   onCollapse,
   onRunTrace,
   onUpdateTrunkAnnotation,
@@ -604,6 +652,7 @@ function TrunkInspectorView({
   const [groupStereo, setGroupStereo] = useState(true);
   const [showVacant, setShowVacant] = useState(true);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
 
   const proto = PROTOCOL_META[trunk.protocol];
@@ -675,64 +724,93 @@ function TrunkInspectorView({
     });
   };
 
-  return (
-    <aside className="flex h-full w-full flex-col border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827]">
-      {/* Compact Header */}
-      <div className="border-b border-slate-200 dark:border-slate-800 px-3.5 py-2.5 shrink-0">
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={onClearSelection}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 dark:text-sky-400 hover:underline cursor-pointer"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Rig Overview</span>
-          </button>
+  const activeMobileFilterCount =
+    (facet !== null ? 1 : 0) +
+    (!groupStereo ? 1 : 0) +
+    (!showVacant && facetCounts.vacant > 0 ? 1 : 0);
 
-          <div className="flex items-center gap-1.5">
-            <span
-              style={{
-                backgroundColor: isDark ? proto.darkBg : proto.bg,
-                color: isDark ? proto.darkText : proto.text,
-                borderColor: isDark ? proto.darkBorder : proto.border,
-              }}
-              className="inline-flex items-center rounded-[1px] border px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase"
-            >
-              {proto.shortLabel}
-            </span>
-            {cableTag && (
-              <span className="hidden sm:inline-flex items-center gap-1 rounded-[1px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-600 dark:text-slate-300">
-                <Cable className="w-2.5 h-2.5" />
-                {cableTag}
-              </span>
-            )}
-            {editMode && trunk.sourceOrigin === 'manual' && (
-              <button
-                type="button"
-                title="Delete manual trunk"
-                onClick={() => onDeleteManualTrunk(trunk.id)}
-                className="rounded-[2px] p-1 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            )}
+  return (
+    <aside
+      className={`flex h-full w-full flex-col bg-white dark:bg-[#111827] ${
+        mobileSheetMode ? '' : 'border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800'
+      }`}
+    >
+      {/* Compact Header */}
+      <div
+        className={`border-b border-slate-200 dark:border-slate-800 shrink-0 ${
+          mobileSheetMode ? 'px-3 py-2' : 'px-3.5 py-2.5'
+        }`}
+      >
+        {!mobileSheetMode && (
+          <div className="flex items-center justify-between gap-2">
             <button
               type="button"
-              title="Collapse Rig Inspector"
-              aria-label="Collapse Rig Inspector"
-              onClick={onCollapse}
-              className="rounded-[2px] p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+              onClick={onClearSelection}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 dark:text-sky-400 hover:underline cursor-pointer"
             >
-              <PanelRightClose className="w-4 h-4" />
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Rig Overview</span>
             </button>
-          </div>
-        </div>
 
-        <div className="mt-1.5 flex items-start justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <span
+                style={{
+                  backgroundColor: isDark ? proto.darkBg : proto.bg,
+                  color: isDark ? proto.darkText : proto.text,
+                  borderColor: isDark ? proto.darkBorder : proto.border,
+                }}
+                className="inline-flex items-center rounded-[1px] border px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase"
+              >
+                {proto.shortLabel}
+              </span>
+              {cableTag && (
+                <span className="hidden sm:inline-flex items-center gap-1 rounded-[1px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-600 dark:text-slate-300">
+                  <Cable className="w-2.5 h-2.5" />
+                  {cableTag}
+                </span>
+              )}
+              {editMode && trunk.sourceOrigin === 'manual' && (
+                <button
+                  type="button"
+                  title="Delete manual trunk"
+                  onClick={() => onDeleteManualTrunk(trunk.id)}
+                  className="rounded-[2px] p-1 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button
+                type="button"
+                title="Collapse Rig Inspector"
+                aria-label="Collapse Rig Inspector"
+                onClick={onCollapse}
+                className="rounded-[2px] p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <PanelRightClose className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className={`${mobileSheetMode ? '' : 'mt-1.5'} flex items-start justify-between gap-2`}>
           <div className="min-w-0">
-            <h2 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
-              {resolveTrunkName(rig, trunk)}
-            </h2>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <h2 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                {resolveTrunkName(rig, trunk)}
+              </h2>
+              {mobileSheetMode && (
+                <span
+                  style={{
+                    backgroundColor: isDark ? proto.darkBg : proto.bg,
+                    color: isDark ? proto.darkText : proto.text,
+                    borderColor: isDark ? proto.darkBorder : proto.border,
+                  }}
+                  className="inline-flex shrink-0 items-center rounded-[1px] border px-1.5 py-0 font-mono text-[9.5px] font-semibold uppercase"
+                >
+                  {proto.shortLabel}
+                </span>
+              )}
+            </div>
             <div className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 flex-wrap">
               <button
                 type="button"
@@ -761,31 +839,43 @@ function TrunkInspectorView({
             </div>
           </div>
 
-          {(editMode || ann?.notes || cableTag) && (
-            <button
-              type="button"
-              onClick={() => setDetailsOpen((o) => !o)}
-              className={`shrink-0 inline-flex items-center gap-1 rounded-[2px] border px-2 py-0.5 text-[11px] font-semibold transition-colors cursor-pointer ${
-                editMode
-                  ? 'border-amber-300 dark:border-amber-700/80 bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-950'
-                  : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100'
-              }`}
-            >
-              {editMode ? (
-                <>
-                  <Pencil className="w-3 h-3" />
-                  <span>{detailsOpen ? 'Done' : 'Edit Cable'}</span>
-                </>
-              ) : (
-                <span>{detailsOpen ? 'Hide Notes' : 'Cable Info'}</span>
-              )}
-              {detailsOpen ? (
-                <ChevronDown className="w-3 h-3" />
-              ) : (
-                <ChevronRight className="w-3 h-3" />
-              )}
-            </button>
-          )}
+          <div className="flex items-center gap-1 shrink-0">
+            {mobileSheetMode && editMode && trunk.sourceOrigin === 'manual' && (
+              <button
+                type="button"
+                title="Delete manual trunk"
+                onClick={() => onDeleteManualTrunk(trunk.id)}
+                className="rounded-[2px] p-1 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {(editMode || ann?.notes || cableTag) && (
+              <button
+                type="button"
+                onClick={() => setDetailsOpen((o) => !o)}
+                className={`shrink-0 inline-flex items-center gap-1 rounded-[2px] border px-2 py-0.5 text-[11px] font-semibold transition-colors cursor-pointer ${
+                  editMode
+                    ? 'border-amber-300 dark:border-amber-700/80 bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-950'
+                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100'
+                }`}
+              >
+                {editMode ? (
+                  <>
+                    <Pencil className="w-3 h-3" />
+                    <span>{detailsOpen ? 'Done' : 'Edit Cable'}</span>
+                  </>
+                ) : (
+                  <span>{detailsOpen ? 'Hide Notes' : 'Cable Info'}</span>
+                )}
+                {detailsOpen ? (
+                  <ChevronDown className="w-3 h-3" />
+                ) : (
+                  <ChevronRight className="w-3 h-3" />
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
         {detailsOpen && (
@@ -892,7 +982,7 @@ function TrunkInspectorView({
           </div>
         )}
 
-        {/* Streamlined 2-Row Filter Bar */}
+        {/* Streamlined Filter Bar (Collapsible drawer on mobile sheet) */}
         <div className="mt-2 space-y-1.5">
           <div className="flex items-center gap-1.5">
             <div className="relative flex-1">
@@ -915,117 +1005,184 @@ function TrunkInspectorView({
                 </button>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => setGroupStereo((v) => !v)}
-              title="Collapse adjacent Stereo L/R slots into single paired rows"
-              className={`shrink-0 rounded-[2px] border px-2 py-1.5 font-mono text-[10.5px] font-semibold transition-colors cursor-pointer ${
-                groupStereo
-                  ? 'border-sky-500/80 bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300'
-                  : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              ST {groupStereo ? 'ON' : 'OFF'}
-            </button>
-            {facetCounts.vacant > 0 && (
+            {mobileSheetMode ? (
               <button
                 type="button"
-                onClick={() => {
-                  setShowVacant((v) => {
-                    const next = !v;
-                    if (!next && facet === 'vacant') setFacet(null);
-                    return next;
-                  });
-                }}
-                title="Show or hide vacant / open trunk lanes in list"
-                className={`shrink-0 rounded-[2px] border px-2 py-1.5 font-mono text-[10.5px] font-semibold transition-colors cursor-pointer ${
-                  showVacant
-                    ? 'border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
-                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                onClick={() => setMobileFiltersOpen((v) => !v)}
+                aria-expanded={mobileFiltersOpen}
+                className={`inline-flex shrink-0 items-center gap-1 rounded-[2px] border px-2 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                  mobileFiltersOpen || activeMobileFilterCount > 0
+                    ? 'border-sky-500/80 bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300'
+                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300'
                 }`}
               >
-                Vacant {showVacant ? 'ON' : 'OFF'}
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span>Filters</span>
+                {activeMobileFilterCount > 0 && (
+                  <span className="rounded-full bg-sky-600 dark:bg-sky-400 px-1.5 py-0 font-mono text-[10px] font-bold text-white dark:text-slate-950">
+                    {activeMobileFilterCount}
+                  </span>
+                )}
               </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setGroupStereo((v) => !v)}
+                  title="Collapse adjacent Stereo L/R slots into single paired rows"
+                  className={`shrink-0 rounded-[2px] border px-2 py-1.5 font-mono text-[10.5px] font-semibold transition-colors cursor-pointer ${
+                    groupStereo
+                      ? 'border-sky-500/80 bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  ST {groupStereo ? 'ON' : 'OFF'}
+                </button>
+                {facetCounts.vacant > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowVacant((v) => {
+                        const next = !v;
+                        if (!next && facet === 'vacant') setFacet(null);
+                        return next;
+                      });
+                    }}
+                    title="Show or hide vacant / open trunk lanes in list"
+                    className={`shrink-0 rounded-[2px] border px-2 py-1.5 font-mono text-[10.5px] font-semibold transition-colors cursor-pointer ${
+                      showVacant
+                        ? 'border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
+                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                    }`}
+                  >
+                    Vacant {showVacant ? 'ON' : 'OFF'}
+                  </button>
+                )}
+              </>
             )}
           </div>
 
-          {(facetCounts.phantom > 0 ||
-            facetCounts.passthrough > 0 ||
-            facetCounts.notes > 0 ||
-            facetCounts.vacant > 0 ||
-            facetCounts.traced > 0 ||
-            facet !== null) && (
-            <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-0.5">
-              {facetCounts.vacant > 0 && (
-                <button
-                  type="button"
-                  onClick={() => toggleFacet('vacant')}
-                  className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
-                    facet === 'vacant'
-                      ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300'
-                      : 'border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
-                  }`}
-                >
-                  Vacant ({facetCounts.vacant})
-                </button>
-              )}
-              {facetCounts.phantom > 0 && (
-                <button
-                  type="button"
-                  onClick={() => toggleFacet('48v')}
-                  className={`inline-flex shrink-0 items-center gap-0.5 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
-                    facet === '48v'
-                      ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300'
-                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
-                  }`}
-                >
-                  <Zap className="w-2.5 h-2.5" />
-                  48V ({facetCounts.phantom})
-                </button>
-              )}
-              {facetCounts.passthrough > 0 && (
-                <button
-                  type="button"
-                  onClick={() => toggleFacet('passthrough')}
-                  className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 text-[10.5px] font-semibold cursor-pointer ${
-                    facet === 'passthrough'
-                      ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300'
-                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
-                  }`}
-                >
-                  ↔ Pass-thru ({facetCounts.passthrough})
-                </button>
-              )}
-              {facetCounts.notes > 0 && (
-                <button
-                  type="button"
-                  onClick={() => toggleFacet('notes')}
-                  className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 text-[10.5px] font-semibold cursor-pointer ${
-                    facet === 'notes'
-                      ? 'border-sky-400 bg-sky-50 dark:bg-sky-950/80 text-sky-700 dark:text-sky-300'
-                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
-                  }`}
-                >
-                  Notes ({facetCounts.notes})
-                </button>
-              )}
-              {facetCounts.traced > 0 && (
-                <button
-                  type="button"
-                  onClick={() => toggleFacet('traced')}
-                  className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 text-[10.5px] font-semibold cursor-pointer ${
-                    facet === 'traced'
-                      ? 'border-sky-600 bg-sky-600 text-white dark:bg-sky-500 dark:text-slate-950'
-                      : 'border-sky-300 dark:border-sky-700 bg-sky-50/70 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300'
-                  }`}
-                >
-                  <GitBranch className="w-2.5 h-2.5" />
-                  Traced ({facetCounts.traced})
-                </button>
-              )}
-            </div>
-          )}
+          {(!mobileSheetMode || mobileFiltersOpen) &&
+            (mobileSheetMode ||
+              facetCounts.phantom > 0 ||
+              facetCounts.passthrough > 0 ||
+              facetCounts.notes > 0 ||
+              facetCounts.vacant > 0 ||
+              facetCounts.traced > 0 ||
+              facet !== null) && (
+              <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-0.5">
+                {mobileSheetMode && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setGroupStereo((v) => !v)}
+                      className={`shrink-0 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                        groupStereo
+                          ? 'border-sky-500/80 bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400'
+                      }`}
+                    >
+                      ST {groupStereo ? 'ON' : 'OFF'}
+                    </button>
+                    {facetCounts.vacant > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowVacant((v) => {
+                            const next = !v;
+                            if (!next && facet === 'vacant') setFacet(null);
+                            return next;
+                          });
+                        }}
+                        className={`shrink-0 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                          showVacant
+                            ? 'border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
+                            : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500'
+                        }`}
+                      >
+                        Show Vacant {showVacant ? 'ON' : 'OFF'}
+                      </button>
+                    )}
+                  </>
+                )}
+                {facetCounts.vacant > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => toggleFacet('vacant')}
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                      facet === 'vacant'
+                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300'
+                        : 'border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
+                    }`}
+                  >
+                    Vacant ({facetCounts.vacant})
+                  </button>
+                )}
+                {facetCounts.phantom > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => toggleFacet('48v')}
+                    className={`inline-flex shrink-0 items-center gap-0.5 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                      facet === '48v'
+                        ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300'
+                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
+                    }`}
+                  >
+                    <Zap className="w-2.5 h-2.5" />
+                    48V ({facetCounts.phantom})
+                  </button>
+                )}
+                {facetCounts.passthrough > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => toggleFacet('passthrough')}
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 text-[10.5px] font-semibold cursor-pointer ${
+                      facet === 'passthrough'
+                        ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300'
+                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
+                    }`}
+                  >
+                    ↔ Pass-thru ({facetCounts.passthrough})
+                  </button>
+                )}
+                {facetCounts.notes > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => toggleFacet('notes')}
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 text-[10.5px] font-semibold cursor-pointer ${
+                      facet === 'notes'
+                        ? 'border-sky-400 bg-sky-50 dark:bg-sky-950/80 text-sky-700 dark:text-sky-300'
+                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
+                    }`}
+                  >
+                    Notes ({facetCounts.notes})
+                  </button>
+                )}
+                {facetCounts.traced > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => toggleFacet('traced')}
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 text-[10.5px] font-semibold cursor-pointer ${
+                      facet === 'traced'
+                        ? 'border-sky-600 bg-sky-600 text-white dark:bg-sky-500 dark:text-slate-950'
+                        : 'border-sky-300 dark:border-sky-700 bg-sky-50/70 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300'
+                    }`}
+                  >
+                    <GitBranch className="w-2.5 h-2.5" />
+                    Traced ({facetCounts.traced})
+                  </button>
+                )}
+              </div>
+            )}
         </div>
+
+        {mobileSheetMode && mobileDetent === 'full' && trace && onChangeMobileDetent && (
+          <MobileFullTraceBar
+            trace={trace}
+            onShowMap={() => onChangeMobileDetent('half')}
+            onClearTrace={onClearTrace}
+          />
+        )}
       </div>
 
       {/* Scrollable Channel List */}
@@ -1098,7 +1255,11 @@ function NodeInspectorView({
   editMode,
   isDark,
   trace,
+  mobileSheetMode = false,
+  mobileDetent,
+  onChangeMobileDetent,
   onClearSelection,
+  onClearTrace,
   onCollapse,
   onRunTrace,
   onUpdateNodeAnnotation,
@@ -1116,6 +1277,7 @@ function NodeInspectorView({
   const [groupStereo, setGroupStereo] = useState(true);
   const [showVacant, setShowVacant] = useState(true);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
 
   // Strips tab state
@@ -1349,57 +1511,82 @@ function NodeInspectorView({
 
   const tabCount = 1 + (hasStrips ? 1 : 0) + (hasBuses ? 1 : 0);
 
-  return (
-    <aside className="flex h-full w-full flex-col border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827]">
-      {/* Compact Header */}
-      <div className="border-b border-slate-200 dark:border-slate-800 px-3.5 py-2.5 shrink-0">
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={onClearSelection}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 dark:text-sky-400 hover:underline cursor-pointer"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Rig Overview</span>
-          </button>
+  const activeMobileFilterCount =
+    tab === 'io'
+      ? (dirFilter !== 'all' ? 1 : 0) +
+        (portFilter !== 'all' ? 1 : 0) +
+        (facet !== null ? 1 : 0) +
+        (!groupStereo ? 1 : 0) +
+        (!showVacant && facetCounts.vacant > 0 ? 1 : 0)
+      : tab === 'strips'
+        ? (stripKindFilter !== 'all' ? 1 : 0) +
+          (stripFacet !== null ? 1 : 0) +
+          (!showVacant && stripCounts.vacant > 0 ? 1 : 0)
+        : (busKindFilter !== 'all' ? 1 : 0) +
+          (busVacantOnly ? 1 : 0) +
+          (!showVacant && busVacantCount > 0 ? 1 : 0);
 
-          <div className="flex items-center gap-1">
-            <span
-              className={`hidden sm:inline-flex items-center rounded-[1px] border px-1.5 py-0.5 font-mono text-[9.5px] font-semibold ${STATUS_TONE_BADGE[nodeSummary.statusTone]}`}
-            >
-              {nodeSummary.statusText}
-            </span>
+  return (
+    <aside
+      className={`flex h-full w-full flex-col bg-white dark:bg-[#111827] ${
+        mobileSheetMode ? '' : 'border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800'
+      }`}
+    >
+      {/* Compact Header */}
+      <div
+        className={`border-b border-slate-200 dark:border-slate-800 shrink-0 ${
+          mobileSheetMode ? 'px-3 py-2' : 'px-3.5 py-2.5'
+        }`}
+      >
+        {!mobileSheetMode && (
+          <div className="flex items-center justify-between gap-2">
             <button
               type="button"
-              title="Highlight connected trunks"
-              onClick={() => onRunTrace({ type: 'node', nodeId: node.id })}
-              className="rounded-[2px] p-1 text-sky-700 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/60 cursor-pointer"
+              onClick={onClearSelection}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 dark:text-sky-400 hover:underline cursor-pointer"
             >
-              <GitBranch className="w-3.5 h-3.5" />
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Rig Overview</span>
             </button>
-            {editMode && node.sourceOrigin === 'manual' && (
+
+            <div className="flex items-center gap-1">
+              <span
+                className={`hidden sm:inline-flex items-center rounded-[1px] border px-1.5 py-0.5 font-mono text-[9.5px] font-semibold ${STATUS_TONE_BADGE[nodeSummary.statusTone]}`}
+              >
+                {nodeSummary.statusText}
+              </span>
               <button
                 type="button"
-                title="Delete manual device"
-                onClick={() => onDeleteManualNode(node.id)}
-                className="rounded-[2px] p-1 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 cursor-pointer"
+                title="Highlight connected trunks"
+                onClick={() => onRunTrace({ type: 'node', nodeId: node.id })}
+                className="rounded-[2px] p-1 text-sky-700 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/60 cursor-pointer"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <GitBranch className="w-3.5 h-3.5" />
               </button>
-            )}
-            <button
-              type="button"
-              title="Collapse Rig Inspector"
-              aria-label="Collapse Rig Inspector"
-              onClick={onCollapse}
-              className="rounded-[2px] p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-            >
-              <PanelRightClose className="w-4 h-4" />
-            </button>
+              {editMode && node.sourceOrigin === 'manual' && (
+                <button
+                  type="button"
+                  title="Delete manual device"
+                  onClick={() => onDeleteManualNode(node.id)}
+                  className="rounded-[2px] p-1 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button
+                type="button"
+                title="Collapse Rig Inspector"
+                aria-label="Collapse Rig Inspector"
+                onClick={onCollapse}
+                className="rounded-[2px] p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <PanelRightClose className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="mt-1.5 flex items-start justify-between gap-2">
+        <div className={`${mobileSheetMode ? '' : 'mt-1.5'} flex items-start justify-between gap-2`}>
           <div className="min-w-0">
             <h2 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
               {resolveNodeName(rig, node)}
@@ -1419,29 +1606,53 @@ function NodeInspectorView({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setDetailsOpen((o) => !o)}
-            className={`shrink-0 inline-flex items-center gap-1 rounded-[2px] border px-2 py-0.5 text-[11px] font-semibold transition-colors cursor-pointer ${
-              editMode
-                ? 'border-amber-300 dark:border-amber-700/80 bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-950'
-                : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100'
-            }`}
-          >
-            {editMode ? (
+          <div className="flex items-center gap-1 shrink-0">
+            {mobileSheetMode && (
               <>
-                <Pencil className="w-3 h-3" />
-                <span>{detailsOpen ? 'Done' : 'Edit Details'}</span>
+                <button
+                  type="button"
+                  title="Highlight connected trunks"
+                  onClick={() => onRunTrace({ type: 'node', nodeId: node.id })}
+                  className="rounded-[2px] p-1 text-sky-700 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/60 cursor-pointer"
+                >
+                  <GitBranch className="w-3.5 h-3.5" />
+                </button>
+                {editMode && node.sourceOrigin === 'manual' && (
+                  <button
+                    type="button"
+                    title="Delete manual device"
+                    onClick={() => onDeleteManualNode(node.id)}
+                    className="rounded-[2px] p-1 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </>
-            ) : (
-              <span>{detailsOpen ? 'Hide Info' : 'Notes & Trunks'}</span>
             )}
-            {detailsOpen ? (
-              <ChevronDown className="w-3 h-3" />
-            ) : (
-              <ChevronRight className="w-3 h-3" />
-            )}
-          </button>
+            <button
+              type="button"
+              onClick={() => setDetailsOpen((o) => !o)}
+              className={`shrink-0 inline-flex items-center gap-1 rounded-[2px] border px-2 py-0.5 text-[11px] font-semibold transition-colors cursor-pointer ${
+                editMode
+                  ? 'border-amber-300 dark:border-amber-700/80 bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-950'
+                  : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100'
+              }`}
+            >
+              {editMode ? (
+                <>
+                  <Pencil className="w-3 h-3" />
+                  <span>{detailsOpen ? 'Done' : mobileSheetMode ? 'Edit' : 'Edit Details'}</span>
+                </>
+              ) : (
+                <span>{detailsOpen ? 'Hide' : mobileSheetMode ? 'Info' : 'Notes & Trunks'}</span>
+              )}
+              {detailsOpen ? (
+                <ChevronDown className="w-3 h-3" />
+              ) : (
+                <ChevronRight className="w-3 h-3" />
+              )}
+            </button>
+          </div>
         </div>
 
         {detailsOpen && (
@@ -1603,10 +1814,10 @@ function NodeInspectorView({
           </div>
         )}
 
-        {/* Tab-Specific Compact Filter Toolbar */}
+        {/* Tab-Specific Compact Filter Toolbar (Collapsible on mobile sheet) */}
         {tab === 'io' && (
           <div className="mt-2 space-y-1.5">
-            {/* Row 1: Search + Clear + ST Toggle + Vacant Toggle */}
+            {/* Row 1: Search + Clear + (Mobile Filters Toggle | Desktop ST & Vacant Toggles) */}
             <div className="flex items-center gap-1.5">
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
@@ -1628,178 +1839,237 @@ function NodeInspectorView({
                   </button>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => setGroupStereo((v) => !v)}
-                title="Collapse adjacent Stereo L/R slots into single paired rows"
-                className={`shrink-0 rounded-[2px] border px-2 py-1.5 font-mono text-[10.5px] font-semibold transition-colors cursor-pointer ${
-                  groupStereo
-                    ? 'border-sky-500/80 bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300'
-                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-                }`}
-              >
-                ST {groupStereo ? 'ON' : 'OFF'}
-              </button>
-              {facetCounts.vacant > 0 && (
+              {mobileSheetMode ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowVacant((v) => {
-                      const next = !v;
-                      if (!next && facet === 'vacant') setFacet(null);
-                      return next;
-                    });
-                  }}
-                  title="Show or hide vacant / open slots in list"
-                  className={`shrink-0 rounded-[2px] border px-2 py-1.5 font-mono text-[10.5px] font-semibold transition-colors cursor-pointer ${
-                    showVacant
-                      ? 'border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
-                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  onClick={() => setMobileFiltersOpen((v) => !v)}
+                  aria-expanded={mobileFiltersOpen}
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-[2px] border px-2 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                    mobileFiltersOpen || activeMobileFilterCount > 0
+                      ? 'border-sky-500/80 bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300'
                   }`}
                 >
-                  Vacant {showVacant ? 'ON' : 'OFF'}
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span>Filters</span>
+                  {activeMobileFilterCount > 0 && (
+                    <span className="rounded-full bg-sky-600 dark:bg-sky-400 px-1.5 py-0 font-mono text-[10px] font-bold text-white dark:text-slate-950">
+                      {activeMobileFilterCount}
+                    </span>
+                  )}
                 </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setGroupStereo((v) => !v)}
+                    title="Collapse adjacent Stereo L/R slots into single paired rows"
+                    className={`shrink-0 rounded-[2px] border px-2 py-1.5 font-mono text-[10.5px] font-semibold transition-colors cursor-pointer ${
+                      groupStereo
+                        ? 'border-sky-500/80 bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300'
+                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    ST {groupStereo ? 'ON' : 'OFF'}
+                  </button>
+                  {facetCounts.vacant > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowVacant((v) => {
+                          const next = !v;
+                          if (!next && facet === 'vacant') setFacet(null);
+                          return next;
+                        });
+                      }}
+                      title="Show or hide vacant / open slots in list"
+                      className={`shrink-0 rounded-[2px] border px-2 py-1.5 font-mono text-[10.5px] font-semibold transition-colors cursor-pointer ${
+                        showVacant
+                          ? 'border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                      }`}
+                    >
+                      Vacant {showVacant ? 'ON' : 'OFF'}
+                    </button>
+                  )}
+                </>
               )}
             </div>
 
             {/* Row 2: Direction Toggle + Port Select + 1-Click Facet Pills */}
-            {(hasBothDirections ||
-              portCodes.length > 1 ||
-              facetCounts.vacant > 0 ||
-              facetCounts.phantom > 0 ||
-              facetCounts.passthrough > 0 ||
-              facetCounts.notes > 0 ||
-              facetCounts.unpatched > 0 ||
-              facetCounts.traced > 0) && (
-              <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-0.5">
-                {hasBothDirections && (
-                  <div className="inline-flex shrink-0 rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-[#0b111d] p-0.5 text-[10.5px]">
-                    {(
-                      [
-                        ['all', 'All'],
-                        ['input', 'IN'],
-                        ['output', 'OUT'],
-                      ] as const
-                    ).map(([k, lbl]) => (
+            {(!mobileSheetMode || mobileFiltersOpen) &&
+              (mobileSheetMode ||
+                hasBothDirections ||
+                portCodes.length > 1 ||
+                facetCounts.vacant > 0 ||
+                facetCounts.phantom > 0 ||
+                facetCounts.passthrough > 0 ||
+                facetCounts.notes > 0 ||
+                facetCounts.unpatched > 0 ||
+                facetCounts.traced > 0) && (
+                <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-0.5">
+                  {mobileSheetMode && (
+                    <>
                       <button
-                        key={k}
                         type="button"
-                        onClick={() => setDirFilter(k)}
-                        className={`rounded-[1px] px-1.5 py-0.5 font-semibold cursor-pointer ${
-                          dirFilter === k
-                            ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
-                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                        onClick={() => setGroupStereo((v) => !v)}
+                        className={`shrink-0 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                          groupStereo
+                            ? 'border-sky-500/80 bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300'
+                            : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400'
                         }`}
                       >
-                        {lbl}
+                        ST {groupStereo ? 'ON' : 'OFF'}
                       </button>
-                    ))}
-                  </div>
-                )}
+                      {facetCounts.vacant > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowVacant((v) => {
+                              const next = !v;
+                              if (!next && facet === 'vacant') setFacet(null);
+                              return next;
+                            });
+                          }}
+                          className={`shrink-0 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                            showVacant
+                              ? 'border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
+                              : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500'
+                          }`}
+                        >
+                          Show Vacant {showVacant ? 'ON' : 'OFF'}
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {hasBothDirections && (
+                    <div className="inline-flex shrink-0 rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-[#0b111d] p-0.5 text-[10.5px]">
+                      {(
+                        [
+                          ['all', 'All'],
+                          ['input', 'IN'],
+                          ['output', 'OUT'],
+                        ] as const
+                      ).map(([k, lbl]) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => setDirFilter(k)}
+                          className={`rounded-[1px] px-1.5 py-0.5 font-semibold cursor-pointer ${
+                            dirFilter === k
+                              ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
+                              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                          }`}
+                        >
+                          {lbl}
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
-                {portCodes.length > 1 && (
-                  <select
-                    aria-label="Filter by port group"
-                    value={portFilter}
-                    onChange={(e) => setPortFilter(e.target.value)}
-                    className="shrink-0 rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-1.5 py-0.5 font-mono text-[10.5px] font-medium text-slate-700 dark:text-slate-200 focus:border-sky-500 focus:outline-none cursor-pointer"
-                  >
-                    <option value="all">All Ports ({portCodes.length})</option>
-                    {portCodes.map((code) => (
-                      <option key={code} value={code}>
-                        {formatPortDropdownLabel(code)}
-                      </option>
-                    ))}
-                  </select>
-                )}
+                  {portCodes.length > 1 && (
+                    <select
+                      aria-label="Filter by port group"
+                      value={portFilter}
+                      onChange={(e) => setPortFilter(e.target.value)}
+                      className="shrink-0 rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-1.5 py-0.5 font-mono text-[10.5px] font-medium text-slate-700 dark:text-slate-200 focus:border-sky-500 focus:outline-none cursor-pointer"
+                    >
+                      <option value="all">All Ports ({portCodes.length})</option>
+                      {portCodes.map((code) => (
+                        <option key={code} value={code}>
+                          {formatPortDropdownLabel(code)}
+                        </option>
+                      ))}
+                    </select>
+                  )}
 
-                {facetCounts.vacant > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => toggleFacet('vacant')}
-                    className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
-                      facet === 'vacant'
-                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300'
-                        : 'border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
-                    }`}
-                  >
-                    Vacant ({facetCounts.vacant})
-                  </button>
-                )}
+                  {facetCounts.vacant > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => toggleFacet('vacant')}
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                        facet === 'vacant'
+                          ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300'
+                          : 'border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
+                      }`}
+                    >
+                      Vacant ({facetCounts.vacant})
+                    </button>
+                  )}
 
-                {facetCounts.phantom > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => toggleFacet('48v')}
-                    className={`inline-flex shrink-0 items-center gap-0.5 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
-                      facet === '48v'
-                        ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300'
-                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
-                    }`}
-                  >
-                    <Zap className="w-2.5 h-2.5" />
-                    48V ({facetCounts.phantom})
-                  </button>
-                )}
+                  {facetCounts.phantom > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => toggleFacet('48v')}
+                      className={`inline-flex shrink-0 items-center gap-0.5 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                        facet === '48v'
+                          ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
+                      }`}
+                    >
+                      <Zap className="w-2.5 h-2.5" />
+                      48V ({facetCounts.phantom})
+                    </button>
+                  )}
 
-                {facetCounts.passthrough > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => toggleFacet('passthrough')}
-                    className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 text-[10.5px] font-semibold cursor-pointer ${
-                      facet === 'passthrough'
-                        ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300'
-                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
-                    }`}
-                  >
-                    ↔ Split ({facetCounts.passthrough})
-                  </button>
-                )}
+                  {facetCounts.passthrough > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => toggleFacet('passthrough')}
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 text-[10.5px] font-semibold cursor-pointer ${
+                        facet === 'passthrough'
+                          ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
+                      }`}
+                    >
+                      ↔ Split ({facetCounts.passthrough})
+                    </button>
+                  )}
 
-                {facetCounts.notes > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => toggleFacet('notes')}
-                    className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 text-[10.5px] font-semibold cursor-pointer ${
-                      facet === 'notes'
-                        ? 'border-sky-400 bg-sky-50 dark:bg-sky-950/80 text-sky-700 dark:text-sky-300'
-                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
-                    }`}
-                  >
-                    Notes ({facetCounts.notes})
-                  </button>
-                )}
+                  {facetCounts.notes > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => toggleFacet('notes')}
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 text-[10.5px] font-semibold cursor-pointer ${
+                        facet === 'notes'
+                          ? 'border-sky-400 bg-sky-50 dark:bg-sky-950/80 text-sky-700 dark:text-sky-300'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
+                      }`}
+                    >
+                      Notes ({facetCounts.notes})
+                    </button>
+                  )}
 
-                {facetCounts.unpatched > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => toggleFacet('unpatched')}
-                    className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 text-[10.5px] font-semibold cursor-pointer ${
-                      facet === 'unpatched'
-                        ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300'
-                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
-                    }`}
-                  >
-                    ⚠ Unpatched ({facetCounts.unpatched})
-                  </button>
-                )}
+                  {facetCounts.unpatched > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => toggleFacet('unpatched')}
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 text-[10.5px] font-semibold cursor-pointer ${
+                        facet === 'unpatched'
+                          ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
+                      }`}
+                    >
+                      ⚠ Unpatched ({facetCounts.unpatched})
+                    </button>
+                  )}
 
-                {facetCounts.traced > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => toggleFacet('traced')}
-                    className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 text-[10.5px] font-semibold cursor-pointer ${
-                      facet === 'traced'
-                        ? 'border-sky-600 bg-sky-600 text-white dark:bg-sky-500 dark:text-slate-950'
-                        : 'border-sky-300 dark:border-sky-700 bg-sky-50/70 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300'
-                    }`}
-                  >
-                    <GitBranch className="w-2.5 h-2.5" />
-                    Traced ({facetCounts.traced})
-                  </button>
-                )}
-              </div>
-            )}
+                  {facetCounts.traced > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => toggleFacet('traced')}
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 text-[10.5px] font-semibold cursor-pointer ${
+                        facet === 'traced'
+                          ? 'border-sky-600 bg-sky-600 text-white dark:bg-sky-500 dark:text-slate-950'
+                          : 'border-sky-300 dark:border-sky-700 bg-sky-50/70 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300'
+                      }`}
+                    >
+                      <GitBranch className="w-2.5 h-2.5" />
+                      Traced ({facetCounts.traced})
+                    </button>
+                  )}
+                </div>
+              )}
           </div>
         )}
 
@@ -1827,80 +2097,123 @@ function NodeInspectorView({
                 )}
               </div>
 
-              {stripCounts.vacant > 0 && (
+              {mobileSheetMode ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowVacant((v) => {
-                      const next = !v;
-                      if (!next && stripFacet === 'vacant') setStripFacet(null);
-                      return next;
-                    });
-                  }}
-                  className={`shrink-0 rounded-[2px] border px-2 py-1.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
-                    showVacant
-                      ? 'border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
-                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500'
+                  onClick={() => setMobileFiltersOpen((v) => !v)}
+                  aria-expanded={mobileFiltersOpen}
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-[2px] border px-2 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                    mobileFiltersOpen || activeMobileFilterCount > 0
+                      ? 'border-sky-500/80 bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300'
                   }`}
                 >
-                  Vacant {showVacant ? 'ON' : 'OFF'}
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span>Filters</span>
+                  {activeMobileFilterCount > 0 && (
+                    <span className="rounded-full bg-sky-600 dark:bg-sky-400 px-1.5 py-0 font-mono text-[10px] font-bold text-white dark:text-slate-950">
+                      {activeMobileFilterCount}
+                    </span>
+                  )}
                 </button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-0.5">
-              <div className="inline-flex shrink-0 rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-[#0b111d] p-0.5 text-[10.5px]">
-                {(['all', 'ch', 'aux'] as const).map((k) => (
+              ) : (
+                stripCounts.vacant > 0 && (
                   <button
-                    key={k}
                     type="button"
-                    onClick={() => setStripKindFilter(k)}
-                    className={`rounded-[1px] px-1.5 py-0.5 font-mono uppercase font-semibold cursor-pointer ${
-                      stripKindFilter === k
-                        ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
-                        : 'text-slate-600 dark:text-slate-400'
+                    onClick={() => {
+                      setShowVacant((v) => {
+                        const next = !v;
+                        if (!next && stripFacet === 'vacant') setStripFacet(null);
+                        return next;
+                      });
+                    }}
+                    className={`shrink-0 rounded-[2px] border px-2 py-1.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                      showVacant
+                        ? 'border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
+                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500'
                     }`}
                   >
-                    {k}
+                    Vacant {showVacant ? 'ON' : 'OFF'}
                   </button>
-                ))}
-              </div>
-
-              {stripCounts.vacant > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStripFacet((cur) => {
-                      const next = cur === 'vacant' ? null : 'vacant';
-                      if (next === 'vacant') setShowVacant(true);
-                      return next;
-                    });
-                  }}
-                  className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
-                    stripFacet === 'vacant'
-                      ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300'
-                      : 'border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300'
-                  }`}
-                >
-                  Vacant ({stripCounts.vacant})
-                </button>
-              )}
-
-              {stripCounts.phantom > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setStripFacet((cur) => (cur === '48v' ? null : '48v'))}
-                  className={`inline-flex shrink-0 items-center gap-0.5 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
-                    stripFacet === '48v'
-                      ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300'
-                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300'
-                  }`}
-                >
-                  <Zap className="w-2.5 h-2.5" />
-                  48V ({stripCounts.phantom})
-                </button>
+                )
               )}
             </div>
+
+            {(!mobileSheetMode || mobileFiltersOpen) && (
+              <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-0.5">
+                {mobileSheetMode && stripCounts.vacant > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowVacant((v) => {
+                        const next = !v;
+                        if (!next && stripFacet === 'vacant') setStripFacet(null);
+                        return next;
+                      });
+                    }}
+                    className={`shrink-0 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                      showVacant
+                        ? 'border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
+                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500'
+                    }`}
+                  >
+                    Show Vacant {showVacant ? 'ON' : 'OFF'}
+                  </button>
+                )}
+
+                <div className="inline-flex shrink-0 rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-[#0b111d] p-0.5 text-[10.5px]">
+                  {(['all', 'ch', 'aux'] as const).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setStripKindFilter(k)}
+                      className={`rounded-[1px] px-1.5 py-0.5 font-mono uppercase font-semibold cursor-pointer ${
+                        stripKindFilter === k
+                          ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
+                          : 'text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      {k}
+                    </button>
+                  ))}
+                </div>
+
+                {stripCounts.vacant > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStripFacet((cur) => {
+                        const next = cur === 'vacant' ? null : 'vacant';
+                        if (next === 'vacant') setShowVacant(true);
+                        return next;
+                      });
+                    }}
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                      stripFacet === 'vacant'
+                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300'
+                        : 'border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    Vacant ({stripCounts.vacant})
+                  </button>
+                )}
+
+                {stripCounts.phantom > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setStripFacet((cur) => (cur === '48v' ? null : '48v'))}
+                    className={`inline-flex shrink-0 items-center gap-0.5 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                      stripFacet === '48v'
+                        ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300'
+                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    <Zap className="w-2.5 h-2.5" />
+                    48V ({stripCounts.phantom})
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -1928,79 +2241,130 @@ function NodeInspectorView({
                 )}
               </div>
 
-              {busVacantCount > 0 && (
+              {mobileSheetMode ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowVacant((v) => {
-                      const next = !v;
-                      if (!next) setBusVacantOnly(false);
-                      return next;
-                    });
-                  }}
-                  className={`shrink-0 rounded-[2px] border px-2 py-1.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
-                    showVacant
-                      ? 'border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
-                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500'
+                  onClick={() => setMobileFiltersOpen((v) => !v)}
+                  aria-expanded={mobileFiltersOpen}
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-[2px] border px-2 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                    mobileFiltersOpen || activeMobileFilterCount > 0
+                      ? 'border-sky-500/80 bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300'
                   }`}
                 >
-                  Vacant {showVacant ? 'ON' : 'OFF'}
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span>Filters</span>
+                  {activeMobileFilterCount > 0 && (
+                    <span className="rounded-full bg-sky-600 dark:bg-sky-400 px-1.5 py-0 font-mono text-[10px] font-bold text-white dark:text-slate-950">
+                      {activeMobileFilterCount}
+                    </span>
+                  )}
                 </button>
+              ) : (
+                busVacantCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowVacant((v) => {
+                        const next = !v;
+                        if (!next) setBusVacantOnly(false);
+                        return next;
+                      });
+                    }}
+                    className={`shrink-0 rounded-[2px] border px-2 py-1.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                      showVacant
+                        ? 'border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
+                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500'
+                    }`}
+                  >
+                    Vacant {showVacant ? 'ON' : 'OFF'}
+                  </button>
+                )
               )}
             </div>
 
-            <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-0.5">
-              {availableBusKinds.length > 1 && (
-                <div className="inline-flex shrink-0 rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-[#0b111d] p-0.5 text-[10px]">
+            {(!mobileSheetMode || mobileFiltersOpen) && (
+              <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-0.5">
+                {mobileSheetMode && busVacantCount > 0 && (
                   <button
                     type="button"
-                    onClick={() => setBusKindFilter('all')}
-                    className={`rounded-[1px] px-1.5 py-0.5 font-mono uppercase font-semibold cursor-pointer ${
-                      busKindFilter === 'all'
-                        ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
-                        : 'text-slate-600 dark:text-slate-400'
+                    onClick={() => {
+                      setShowVacant((v) => {
+                        const next = !v;
+                        if (!next) setBusVacantOnly(false);
+                        return next;
+                      });
+                    }}
+                    className={`shrink-0 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                      showVacant
+                        ? 'border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
+                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500'
                     }`}
                   >
-                    All
+                    Show Vacant {showVacant ? 'ON' : 'OFF'}
                   </button>
-                  {availableBusKinds.map((k) => (
+                )}
+
+                {availableBusKinds.length > 1 && (
+                  <div className="inline-flex shrink-0 rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-[#0b111d] p-0.5 text-[10px]">
                     <button
-                      key={k}
                       type="button"
-                      onClick={() => setBusKindFilter(k)}
+                      onClick={() => setBusKindFilter('all')}
                       className={`rounded-[1px] px-1.5 py-0.5 font-mono uppercase font-semibold cursor-pointer ${
-                        busKindFilter === k
+                        busKindFilter === 'all'
                           ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
                           : 'text-slate-600 dark:text-slate-400'
                       }`}
                     >
-                      {k}
+                      All
                     </button>
-                  ))}
-                </div>
-              )}
+                    {availableBusKinds.map((k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => setBusKindFilter(k)}
+                        className={`rounded-[1px] px-1.5 py-0.5 font-mono uppercase font-semibold cursor-pointer ${
+                          busKindFilter === k
+                            ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
+                            : 'text-slate-600 dark:text-slate-400'
+                        }`}
+                      >
+                        {k}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
-              {busVacantCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBusVacantOnly((v) => {
-                      const next = !v;
-                      if (next) setShowVacant(true);
-                      return next;
-                    });
-                  }}
-                  className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
-                    busVacantOnly
-                      ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300'
-                      : 'border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300'
-                  }`}
-                >
-                  Vacant ({busVacantCount})
-                </button>
-              )}
-            </div>
+                {busVacantCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBusVacantOnly((v) => {
+                        const next = !v;
+                        if (next) setShowVacant(true);
+                        return next;
+                      });
+                    }}
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                      busVacantOnly
+                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300'
+                        : 'border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    Vacant ({busVacantCount})
+                  </button>
+                )}
+              </div>
+            )}
           </div>
+        )}
+
+        {mobileSheetMode && mobileDetent === 'full' && trace && onChangeMobileDetent && (
+          <MobileFullTraceBar
+            trace={trace}
+            onShowMap={() => onChangeMobileDetent('half')}
+            onClearTrace={onClearTrace}
+          />
         )}
       </div>
 
@@ -2524,6 +2888,9 @@ function OverviewInspectorView({
   editMode,
   isDark,
   trace,
+  mobileSheetMode = false,
+  mobileDetent,
+  onChangeMobileDetent,
   onSelectNode,
   onSelectTrunk,
   onClearTrace,
@@ -2614,33 +2981,49 @@ function OverviewInspectorView({
   };
 
   return (
-    <aside className="flex h-full w-full flex-col border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827]">
+    <aside
+      className={`flex h-full w-full flex-col bg-white dark:bg-[#111827] ${
+        mobileSheetMode ? '' : 'border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800'
+      }`}
+    >
       {/* Compact Overview Header + Inline Search */}
-      <div className="border-b border-slate-200 dark:border-slate-800 px-3.5 py-2.5 shrink-0 space-y-2">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <Layers className="w-4 h-4 text-sky-700 dark:text-sky-400 shrink-0" />
-              <h2 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100">
-                Rig Overview
-              </h2>
-            </div>
-            <div className="mt-0.5 font-mono text-[10.5px] text-slate-500 dark:text-slate-400 tabular-nums">
-              {rig.nodes.length} devices · {rig.trunks.length} trunks
-              {phantomCount > 0 ? ` · ⚡${phantomCount}× 48V` : ''} · {rig.sourceSnapshots.length}{' '}
-              .snap
-            </div>
+      <div
+        className={`border-b border-slate-200 dark:border-slate-800 shrink-0 ${
+          mobileSheetMode ? 'px-3 py-2 space-y-1.5' : 'px-3.5 py-2.5 space-y-2'
+        }`}
+      >
+        {mobileSheetMode ? (
+          <div className="font-mono text-[10.5px] text-slate-500 dark:text-slate-400 tabular-nums">
+            {rig.nodes.length} devices · {rig.trunks.length} trunks
+            {phantomCount > 0 ? ` · ⚡${phantomCount}× 48V` : ''} · {rig.sourceSnapshots.length}{' '}
+            .snap
           </div>
-          <button
-            type="button"
-            title="Collapse Rig Inspector for full-screen topology view"
-            aria-label="Collapse Rig Inspector"
-            onClick={onCollapse}
-            className="rounded-[2px] p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-          >
-            <PanelRightClose className="w-4 h-4" />
-          </button>
-        </div>
+        ) : (
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-sky-700 dark:text-sky-400 shrink-0" />
+                <h2 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Rig Overview
+                </h2>
+              </div>
+              <div className="mt-0.5 font-mono text-[10.5px] text-slate-500 dark:text-slate-400 tabular-nums">
+                {rig.nodes.length} devices · {rig.trunks.length} trunks
+                {phantomCount > 0 ? ` · ⚡${phantomCount}× 48V` : ''} · {rig.sourceSnapshots.length}{' '}
+                .snap
+              </div>
+            </div>
+            <button
+              type="button"
+              title="Collapse Rig Inspector for full-screen topology view"
+              aria-label="Collapse Rig Inspector"
+              onClick={onCollapse}
+              className="rounded-[2px] p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+            >
+              <PanelRightClose className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
@@ -2679,13 +3062,25 @@ function OverviewInspectorView({
                 </div>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={onClearTrace}
-              className="shrink-0 rounded-[1px] border border-sky-300 dark:border-sky-700 bg-white dark:bg-slate-900 px-2 py-0.5 text-[10.5px] font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-950 cursor-pointer"
-            >
-              Clear
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              {mobileSheetMode && mobileDetent === 'full' && onChangeMobileDetent && (
+                <button
+                  type="button"
+                  onClick={() => onChangeMobileDetent('half')}
+                  className="inline-flex items-center gap-0.5 rounded-[1px] bg-sky-600 dark:bg-sky-500 px-2 py-0.5 font-mono text-[10.5px] font-semibold text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-400 cursor-pointer"
+                >
+                  <span>Map</span>
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onClearTrace}
+                className="shrink-0 rounded-[1px] border border-sky-300 dark:border-sky-700 bg-white dark:bg-slate-900 px-2 py-0.5 text-[10.5px] font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-950 cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
           </div>
         )}
 

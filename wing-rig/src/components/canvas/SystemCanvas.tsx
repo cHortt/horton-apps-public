@@ -32,6 +32,7 @@ interface SystemCanvasProps {
   editMode: boolean;
   isDark: boolean;
   inspectorCollapsed: boolean;
+  hideTraceBanner?: boolean;
   selection: SelectionState;
   trace: TraceResult | null;
   onSelectNode: (id: string) => void;
@@ -157,6 +158,7 @@ export function SystemCanvas({
   editMode,
   isDark,
   inspectorCollapsed,
+  hideTraceBanner = false,
   selection,
   trace,
   onSelectNode,
@@ -286,7 +288,7 @@ export function SystemCanvas({
 
   return (
     <div className="relative h-full w-full bg-[#f3f5f8] dark:bg-[#090d14]">
-      {trace && (
+      {trace && !hideTraceBanner && (
         <TraceBanner
           trace={trace}
           onClear={onClearTrace}
@@ -297,9 +299,10 @@ export function SystemCanvas({
 
       {/* Subtle Edit Mode room-layout drag cue */}
       {editMode && !trace && (
-        <div className="pointer-events-none absolute top-3 left-3 z-10 inline-flex items-center gap-1.5 rounded-[2px] border border-amber-400/90 dark:border-amber-700/80 bg-amber-50/95 dark:bg-amber-950/90 backdrop-blur-xs px-2.5 py-1 font-mono text-[10.5px] font-semibold text-amber-900 dark:text-amber-200 shadow-xs">
+        <div className="pointer-events-none absolute top-2 left-2 lg:top-3 lg:left-3 z-10 inline-flex items-center gap-1.5 rounded-[2px] border border-amber-400/90 dark:border-amber-700/80 bg-amber-50/95 dark:bg-amber-950/90 backdrop-blur-xs px-2.5 py-1 font-mono text-[10.5px] font-semibold text-amber-900 dark:text-amber-200 shadow-xs">
           <Move className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-          <span>EDIT MODE · DRAG BLOCKS TO ARRANGE · AUTO-SAVED</span>
+          <span className="hidden sm:inline">EDIT MODE · DRAG BLOCKS TO ARRANGE · AUTO-SAVED</span>
+          <span className="sm:hidden">EDIT MODE · DRAG BLOCKS</span>
         </div>
       )}
 
@@ -329,11 +332,11 @@ export function SystemCanvas({
           lineWidth={1}
           color={isDark ? 'rgba(148, 163, 184, 0.08)' : 'rgba(15, 23, 42, 0.055)'}
         />
-        <Controls showInteractive={false} position="bottom-left" />
+        <Controls showInteractive={false} position="bottom-left" className="!mb-[86px] lg:!mb-0" />
       </ReactFlow>
 
       {/* Protocol Legend & Read-Only / Edit status strip */}
-      <div className="pointer-events-auto absolute bottom-3 left-14 z-10 hidden sm:flex items-center gap-2.5 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-xs px-3 py-1.5 shadow-xs">
+      <div className="pointer-events-auto absolute bottom-3 left-14 z-10 hidden lg:flex items-center gap-2.5 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-xs px-3 py-1.5 shadow-xs">
         <span className="font-mono text-[9.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
           Trunks
         </span>
@@ -358,13 +361,13 @@ export function SystemCanvas({
         </span>
       </div>
 
-      {/* Floating Expand Inspector button when Rig Inspector is collapsed */}
+      {/* Floating Expand Inspector button when Rig Inspector is collapsed on desktop */}
       {inspectorCollapsed && (
         <button
           type="button"
           onClick={onExpandInspector}
           title="Expand Rig Inspector"
-          className="pointer-events-auto absolute bottom-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-[2px] border border-slate-400 dark:border-slate-600 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-xs px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide text-slate-800 dark:text-slate-100 shadow-xs hover:border-sky-600 hover:text-sky-700 dark:hover:text-sky-400 transition-colors cursor-pointer"
+          className="pointer-events-auto absolute bottom-3 right-3 z-10 hidden lg:inline-flex items-center gap-1.5 rounded-[2px] border border-slate-400 dark:border-slate-600 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-xs px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide text-slate-800 dark:text-slate-100 shadow-xs hover:border-sky-600 hover:text-sky-700 dark:hover:text-sky-400 transition-colors cursor-pointer"
         >
           <PanelRightOpen className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
           <span className="max-w-[190px] truncate">{collapsedInspectLabel}</span>

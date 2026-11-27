@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { AlertTriangle, Lock } from 'lucide-react';
 import { useRigStore } from './store/useRigStore';
@@ -6,16 +6,26 @@ import { useTheme } from './store/useTheme';
 import { TopBar } from './components/TopBar';
 import { SystemCanvas } from './components/canvas/SystemCanvas';
 import { SideInspector } from './components/inspector/SideInspector';
+import { MobileBottomSheet } from './components/inspector/MobileBottomSheet';
+import { useIsDesktopViewport, type SheetDetent } from './components/inspector/mobileSheet';
+import { countRigPhantomChannels } from './components/inspector/inspectorHelpers';
 import { AddGearModal } from './components/inspector/AddGearModal';
 import { SnapImportModal } from './components/import/SnapImportModal';
 import { ShareRigModal } from './components/share/ShareRigModal';
 import { PrintView } from './components/print/PrintView';
 import { PatchStudio } from './components/patch/PatchStudio';
-import type { SearchHit } from './schema/rig';
+import { PROTOCOL_META, resolveNodeName, resolveTrunkName } from './schema/helpers';
+import type { SearchHit, TraceTarget } from './schema/rig';
 
 export function App() {
   const store = useRigStore();
   const { isDark, toggleTheme } = useTheme();
+  const isDesktop = useIsDesktopViewport(1024);
+  const mainCanvasRef = useRef<HTMLElement>(null);
+
+  const [mobileDetent, setMobileDetent] = useState<SheetDetent>(() =>
+    store.inspectorCollapsed ? 'peek' : 'half',
+  );
   const [snapModalOpen, setSnapModalOpen] = useState(false);
   const [snapTargetConsoleId, setSnapTargetConsoleId] = useState<string | undefined>(undefined);
   const [addGearModalOpen, setAddGearModalOpen] = useState(false);
@@ -34,6 +44,20 @@ export function App() {
     setSnapModalOpen(true);
   };
 
+  const handleSelectNode = (id: string) => {
+    store.selectNode(id);
+    if (!isDesktop) {
+      setMobileDetent((cur) => (cur === 'peek' ? 'half' : cur));
+    }
+  };
+
+  const handleSelectTrunk = (id: string) => {
+    store.selectTrunk(id);
+    if (!isDesktop) {
+      setMobileDetent((cur) => (cur === 'peek' ? 'half' : cur));
+    }
+  };
+
   const handleSelectSearchHit = (hit: SearchHit) => {
     if (hit.trunkId) {
       store.selectTrunk(hit.trunkId);
@@ -41,12 +65,100 @@ export function App() {
       store.selectNode(hit.nodeId);
     }
     store.runTrace(hit.traceTarget);
+    if (!isDesktop) {
+      setMobileDetent('half');
+    }
+  };
+
+  const handleTraceOnSchematic = (target: TraceTarget) => {
+    store.traceOnSchematic(target);
+    if (!isDesktop) {
+      setMobileDetent('half');
+    }
   };
 
   const auditAlertCount = store.auditIssues.filter((i) => i.severity !== 'info').length;
 
+  const mobileSheetSummary = useMemo(() => {
+    const { rig, selection } = store;
+    if (selection?.type === 'node') {
+      const node = rig.nodes.find((n) => n.id === selection.id);
+      if (node) {
+        const ioCount = node.portGroups.reduce((sum, pg) => sum + pg.channels.length, 0);
+        const stripCount = node.channelStrips?.length ?? 0;
+        const busCount = node.mixBuses.length;
+        const parts = [`${ioCount} I/O`];
+        if (stripCount > 0) parts.push(`${stripCount} Strips`);
+        if (busCount > 0) parts.push(`${busCount} Buses`);
+        if (parts.length === 1 && node.model) parts.push(node.model);
+        return {
+          title: resolveNodeName(rig, node),
+          subtitle: parts.join(' · '),
+          hasSelection: true,
+        };
+      }
+    }
+    if (selection?.type === 'trunk') {
+      const trunk = rig.trunks.find((t) => t.id === selection.id);
+      if (trunk) {
+        const proto = PROTOCOL_META[trunk.protocol];
+        const countStr = trunk.returnChannels.length
+          ? `${trunk.channels.length}↔${trunk.returnChannels.length} ch`
+          : `${trunk.channels.length} ch`;
+        return {
+          title: resolveTrunkName(rig, trunk),
+          subtitle: `${proto.shortLabel} · ${countStr}`,
+          hasSelection: true,
+        };
+      }
+    }
+    const phantomCount = countRigPhantomChannels(rig);
+    return {
+      title: 'Rig Overview',
+      subtitle: `${rig.nodes.length} devices · ${rig.trunks.length} trunks${phantomCount > 0 ? ` · ⚡${phantomCount}× 48V` : ''}`,
+      hasSelection: false,
+    };
+  }, [store.rig, store.selection]);
+
+  const inspectorElement = (
+    <SideInspector
+      rig={store.rig}
+      auditIssues={store.auditIssues}
+      lockedReadOnly={store.lockedReadOnly}
+      editMode={store.editMode}
+      isDark={isDark}
+      selection={store.selection}
+      trace={store.trace}
+      mobileSheetMode={!isDesktop}
+      mobileDetent={!isDesktop ? mobileDetent : undefined}
+      onChangeMobileDetent={!isDesktop ? setMobileDetent : undefined}
+      onSelectNode={handleSelectNode}
+      onSelectTrunk={handleSelectTrunk}
+      onClearSelection={store.clearSelection}
+      onClearTrace={store.clearTrace}
+      onCollapse={() => {
+        if (isDesktop) {
+          store.setInspectorCollapsed(true);
+        } else {
+          setMobileDetent('peek');
+        }
+      }}
+      onRunTrace={store.runTrace}
+      onTraceOnSchematic={handleTraceOnSchematic}
+      onUpdateNodeAnnotation={store.updateNodeAnnotation}
+      onUpdateTrunkAnnotation={store.updateTrunkAnnotation}
+      onUpdateChannelAnnotation={store.updateChannelAnnotation}
+      onUpdateBusAnnotation={store.updateBusAnnotation}
+      onDismissOrphan={store.dismissOrphan}
+      onDeleteManualNode={store.deleteManualNode}
+      onDeleteManualTrunk={store.deleteManualTrunk}
+      onOpenSnapImport={() => openSnapModal()}
+      onResetDemo={store.resetToDemoRig}
+    />
+  );
+
   return (
-    <div className="flex h-full flex-col bg-[#f3f5f8] text-slate-900 dark:bg-[#090d14] dark:text-slate-100">
+    <div className="flex h-dvh print:h-auto flex-col bg-[#f3f5f8] text-slate-900 dark:bg-[#090d14] dark:text-slate-100">
       <TopBar
         rig={store.rig}
         lockedReadOnly={store.lockedReadOnly}
@@ -118,11 +230,16 @@ export function App() {
             onExportPatchedSnap={store.exportPatchedSnap}
             onCommitConsoleBaseline={store.commitConsoleBaseline}
             onOpenSnapImport={(cid) => openSnapModal(cid)}
-            onTraceOnSchematic={store.traceOnSchematic}
+            onTraceOnSchematic={handleTraceOnSchematic}
           />
         </main>
       ) : (
-        <main className="no-print flex min-h-0 flex-1 flex-col lg:flex-row">
+        <main
+          ref={mainCanvasRef}
+          className={`no-print flex min-h-0 flex-1 overflow-hidden ${
+            isDesktop ? 'flex-row' : 'relative flex-col'
+          }`}
+        >
           <div className="relative min-h-0 flex-1">
             <ReactFlowProvider>
               <SystemCanvas
@@ -130,10 +247,11 @@ export function App() {
                 editMode={store.editMode}
                 isDark={isDark}
                 inspectorCollapsed={store.inspectorCollapsed}
+                hideTraceBanner={!isDesktop && mobileDetent === 'full'}
                 selection={store.selection}
                 trace={store.trace}
-                onSelectNode={store.selectNode}
-                onSelectTrunk={store.selectTrunk}
+                onSelectNode={handleSelectNode}
+                onSelectTrunk={handleSelectTrunk}
                 onClearSelection={store.clearSelection}
                 onClearTrace={store.clearTrace}
                 onNodePositionChange={store.updateNodePosition}
@@ -142,34 +260,24 @@ export function App() {
             </ReactFlowProvider>
           </div>
 
-          {!store.inspectorCollapsed && (
-            <div className="h-[46vh] lg:h-auto lg:w-[410px] xl:w-[440px] shrink-0 overflow-hidden">
-              <SideInspector
-                rig={store.rig}
-                auditIssues={store.auditIssues}
-                lockedReadOnly={store.lockedReadOnly}
-                editMode={store.editMode}
-                isDark={isDark}
-                selection={store.selection}
-                trace={store.trace}
-                onSelectNode={store.selectNode}
-                onSelectTrunk={store.selectTrunk}
-                onClearSelection={store.clearSelection}
-                onClearTrace={store.clearTrace}
-                onCollapse={() => store.setInspectorCollapsed(true)}
-                onRunTrace={store.runTrace}
-                onTraceOnSchematic={store.traceOnSchematic}
-                onUpdateNodeAnnotation={store.updateNodeAnnotation}
-                onUpdateTrunkAnnotation={store.updateTrunkAnnotation}
-                onUpdateChannelAnnotation={store.updateChannelAnnotation}
-                onUpdateBusAnnotation={store.updateBusAnnotation}
-                onDismissOrphan={store.dismissOrphan}
-                onDeleteManualNode={store.deleteManualNode}
-                onDeleteManualTrunk={store.deleteManualTrunk}
-                onOpenSnapImport={() => openSnapModal()}
-                onResetDemo={store.resetToDemoRig}
-              />
-            </div>
+          {isDesktop ? (
+            !store.inspectorCollapsed && (
+              <div className="h-auto w-[410px] xl:w-[440px] shrink-0 overflow-hidden">
+                {inspectorElement}
+              </div>
+            )
+          ) : (
+            <MobileBottomSheet
+              detent={mobileDetent}
+              onDetentChange={setMobileDetent}
+              title={mobileSheetSummary.title}
+              subtitle={mobileSheetSummary.subtitle}
+              hasSelection={mobileSheetSummary.hasSelection}
+              onClearSelection={store.clearSelection}
+              containerRef={mainCanvasRef}
+            >
+              {inspectorElement}
+            </MobileBottomSheet>
           )}
         </main>
       )}
