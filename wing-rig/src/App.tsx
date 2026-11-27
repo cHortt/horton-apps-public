@@ -146,6 +146,7 @@ export function App() {
             <div className="h-[46vh] lg:h-auto lg:w-[410px] xl:w-[440px] shrink-0 overflow-hidden">
               <SideInspector
                 rig={store.rig}
+                auditIssues={store.auditIssues}
                 lockedReadOnly={store.lockedReadOnly}
                 editMode={store.editMode}
                 isDark={isDark}
@@ -154,8 +155,10 @@ export function App() {
                 onSelectNode={store.selectNode}
                 onSelectTrunk={store.selectTrunk}
                 onClearSelection={store.clearSelection}
+                onClearTrace={store.clearTrace}
                 onCollapse={() => store.setInspectorCollapsed(true)}
                 onRunTrace={store.runTrace}
+                onTraceOnSchematic={store.traceOnSchematic}
                 onUpdateNodeAnnotation={store.updateNodeAnnotation}
                 onUpdateTrunkAnnotation={store.updateTrunkAnnotation}
                 onUpdateChannelAnnotation={store.updateChannelAnnotation}
