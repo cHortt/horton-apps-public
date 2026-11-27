@@ -24,7 +24,6 @@ import {
 import type {
   BusAnnotation,
   ChannelAnnotation,
-  ConsoleChannelStrip,
   HardwareNode,
   MixBusKind,
   MixBusSummary,
@@ -53,6 +52,8 @@ import {
 import type { SelectionState } from '../../store/useRigStore';
 import {
   ZONE_ORDER,
+  buildConsoleBusRows,
+  buildConsoleStripRows,
   buildNodePassthroughInputSet,
   collapseBusOutputs,
   compactNodeTabLabel,
@@ -60,13 +61,14 @@ import {
   countRigPhantomChannels,
   filterInspectorRows,
   findIndirectMonitorsForBus,
-  findStripSourceChannel,
   getConnectedTrunkChips,
   groupInspectorChannels,
   groupNodesByZone,
   padSlot,
+  resolveTrunkDirectionCapacity,
   type InspectorChannelRow,
   type InspectorFacet,
+  type InspectorStripRow,
 } from './inspectorHelpers';
 
 export interface SideInspectorProps {
@@ -143,7 +145,7 @@ export function SideInspector(props: SideInspectorProps) {
 }
 
 // =============================================================================
-// Shared Scannable Channel Row with Progressive Disclosure & Inline Edit
+// Shared Scannable Channel Row (Occupied + Recessed Vacant)
 // =============================================================================
 
 interface ChannelInspectorRowProps {
@@ -153,7 +155,7 @@ interface ChannelInspectorRowProps {
   editMode: boolean;
   isTraced: boolean;
   isExpanded: boolean;
-  traceTarget: TraceTarget;
+  traceTarget?: TraceTarget;
   onToggleExpandAndTrace: () => void;
   onSelectNode: (id: string) => void;
   onSelectTrunk: (id: string) => void;
@@ -175,14 +177,13 @@ function ChannelInspectorRow({
 }: ChannelInspectorRowProps) {
   const [editing, setEditing] = useState(false);
   const channel = row.primary;
-  const ann = rig.annotations.channels[channel.id];
+  const ann = channel ? rig.annotations.channels[channel.id] : undefined;
   const partnerAnn = row.partner ? rig.annotations.channels[row.partner.id] : undefined;
 
   const [friendlyDraft, setFriendlyDraft] = useState(ann?.friendlyName ?? '');
   const [cableDraft, setCableDraft] = useState(ann?.cableTag ?? '');
   const [notesDraft, setNotesDraft] = useState(ann?.notes ?? '');
 
-  // Close inline edit form cleanly if Edit Mode is turned off
   useEffect(() => {
     if (!editMode && editing) {
       setEditing(false);
@@ -190,9 +191,26 @@ function ChannelInspectorRow({
   }, [editMode, editing]);
 
   const inlineTrace = useMemo(
-    () => (isExpanded ? traceSignal(rig, traceTarget) : null),
+    () => (isExpanded && traceTarget ? traceSignal(rig, traceTarget) : null),
     [isExpanded, rig, traceTarget],
   );
+
+  // Recessed, low-noise row for vacant / unused slots
+  if (row.isVacant || !channel) {
+    return (
+      <div className="flex items-center gap-2 border-b border-slate-100/90 dark:border-slate-800/60 last:border-b-0 bg-slate-50/45 dark:bg-[#0b111d]/55 px-3 py-1 select-none">
+        <span className="inline-flex h-5 w-7 shrink-0 items-center justify-center rounded-[1px] border border-dashed border-slate-300/90 dark:border-slate-700/80 font-mono text-[10.5px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
+          {row.slotLabel}
+        </span>
+        <span className="flex-1 truncate text-[11.5px] italic text-slate-400 dark:text-slate-500">
+          Vacant
+        </span>
+        <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-slate-400/80 dark:text-slate-600">
+          Open
+        </span>
+      </div>
+    );
+  }
 
   const openEditor = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -313,18 +331,18 @@ function ChannelInspectorRow({
           )}
         </div>
 
-        {/* Col 3: Right-aligned tabular Console Strip / Route + Gain */}
+        {/* Col 3: Right-aligned tabular Console Strip / Route + non-wrapping Gain */}
         <div className="flex items-center gap-2 shrink-0">
           {!isOutputView ? (
             <>
               {channel.consoleChannel ? (
-                <span className="font-mono text-[10.5px] font-semibold text-sky-700 dark:text-sky-300 tabular-nums">
+                <span className="font-mono text-[10.5px] font-semibold text-sky-700 dark:text-sky-300 tabular-nums whitespace-nowrap">
                   {channel.consoleChannel}
                 </span>
               ) : row.isUnpatchedInput ? (
                 <span
                   title="Preamp slot has no console strip or direct pass-through assigned"
-                  className="font-mono text-[10px] font-medium text-amber-700 dark:text-amber-400"
+                  className="font-mono text-[10px] font-medium text-amber-700 dark:text-amber-400 whitespace-nowrap"
                 >
                   Unpatched
                 </span>
@@ -338,7 +356,7 @@ function ChannelInspectorRow({
               ) : null}
               {hasGain && (
                 <span
-                  className={`w-[48px] text-right font-mono text-[10.5px] tabular-nums ${
+                  className={`min-w-[54px] text-right font-mono text-[10.5px] tabular-nums whitespace-nowrap ${
                     channel.gainDb && channel.gainDb !== 0
                       ? 'font-medium text-slate-700 dark:text-slate-200'
                       : 'text-slate-400 dark:text-slate-500'
@@ -369,7 +387,7 @@ function ChannelInspectorRow({
         </div>
       </div>
 
-      {/* Progressive Disclosure Drawer (Signal hops, preamp specs, human annotations, Edit button) */}
+      {/* Progressive Disclosure Drawer */}
       {isExpanded && (
         <div
           onClick={(e) => e.stopPropagation()}
@@ -399,7 +417,6 @@ function ChannelInspectorRow({
             )}
           </div>
 
-          {/* Clickable End-to-End Signal Breadcrumb */}
           {inlineTrace && inlineTrace.steps.length > 0 && (
             <div className="flex flex-wrap items-center gap-1">
               {inlineTrace.steps.map((step, idx) => (
@@ -424,7 +441,6 @@ function ChannelInspectorRow({
             </div>
           )}
 
-          {/* Compact Technical Specs Strip */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-slate-200/80 dark:border-slate-800 pt-1.5 text-[11px] text-slate-600 dark:text-slate-300">
             {row.isStereoPair && row.partner && (
               <span>
@@ -476,7 +492,6 @@ function ChannelInspectorRow({
             )}
           </div>
 
-          {/* Layer 2 Human Cable Tag & Notes */}
           {(effectiveCableTag || effectiveNotes) && !editing && (
             <div className="flex flex-wrap items-center gap-2 rounded-[1px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-2 py-1.5 text-[11px]">
               {effectiveCableTag && (
@@ -491,7 +506,6 @@ function ChannelInspectorRow({
             </div>
           )}
 
-          {/* Inline Edit Form (only in Edit Mode on explicit click) */}
           {editing && (
             <form
               onSubmit={saveEdit}
@@ -500,7 +514,7 @@ function ChannelInspectorRow({
               {row.isStereoPair && (
                 <div className="text-[10.5px] text-slate-500 dark:text-slate-400">
                   Editing primary slot <span className="font-mono font-semibold">{channel.slot}</span>{' '}
-                  (turn off <span className="font-mono">ST Pairs</span> to annotate L/R separately).
+                  (turn off <span className="font-mono">ST</span> to annotate L/R separately).
                 </div>
               )}
               <div className="grid grid-cols-2 gap-2">
@@ -588,6 +602,7 @@ function TrunkInspectorView({
   const [filter, setFilter] = useState('');
   const [facet, setFacet] = useState<InspectorFacet | null>(null);
   const [groupStereo, setGroupStereo] = useState(true);
+  const [showVacant, setShowVacant] = useState(true);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
 
@@ -600,44 +615,70 @@ function TrunkInspectorView({
   const cableTag = resolveTrunkCableTag(rig, trunk);
   const tracedChannelIds = useMemo(() => new Set(trace?.activeChannelIds ?? []), [trace]);
 
+  const fwdCapacity = useMemo(
+    () => resolveTrunkDirectionCapacity(rig, trunk, 'forward'),
+    [rig, trunk],
+  );
+  const retCapacity = useMemo(
+    () => resolveTrunkDirectionCapacity(rig, trunk, 'return'),
+    [rig, trunk],
+  );
+
+  const hasReturnTab = trunk.returnChannels.length > 0;
   const effectiveDir: 'forward' | 'return' =
-    directionTab === 'return' && trunk.returnChannels.length > 0 ? 'return' : 'forward';
+    directionTab === 'return' && hasReturnTab ? 'return' : 'forward';
 
   const activeList = effectiveDir === 'return' ? trunk.returnChannels : trunk.channels;
+  const activeCapacity = effectiveDir === 'return' ? retCapacity : fwdCapacity;
 
-  const groupedRows = useMemo(
+  // Compute full rows (including vacants) so vacant count is always known
+  const allRowsWithVacants = useMemo(
     () =>
       groupInspectorChannels(rig, activeList, {
         groupStereo,
+        includeVacant: true,
+        capacity: activeCapacity,
+        keyPrefix: `${trunk.id}:${effectiveDir}`,
         isConsoleInput: false,
       }),
-    [rig, activeList, groupStereo],
+    [rig, activeList, groupStereo, activeCapacity, trunk.id, effectiveDir],
   );
 
   const facetCounts = useMemo(
     () => ({
-      phantom: groupedRows.filter((r) => r.phantom48v).length,
-      passthrough: groupedRows.filter((r) => r.isPassthrough).length,
-      notes: groupedRows.filter((r) => r.hasAnnotation).length,
-      traced: groupedRows.filter((r) => r.channelIds.some((id) => tracedChannelIds.has(id))).length,
+      phantom: allRowsWithVacants.filter((r) => r.phantom48v).length,
+      passthrough: allRowsWithVacants.filter((r) => r.isPassthrough).length,
+      notes: allRowsWithVacants.filter((r) => r.hasAnnotation).length,
+      vacant: allRowsWithVacants.filter((r) => r.isVacant).length,
+      traced: allRowsWithVacants.filter((r) =>
+        r.channelIds.some((id) => tracedChannelIds.has(id)),
+      ).length,
     }),
-    [groupedRows, tracedChannelIds],
+    [allRowsWithVacants, tracedChannelIds],
   );
 
+  const visibleBaseRows = useMemo(() => {
+    if (showVacant || facet === 'vacant') return allRowsWithVacants;
+    return allRowsWithVacants.filter((r) => !r.isVacant);
+  }, [allRowsWithVacants, showVacant, facet]);
+
   const filteredRows = useMemo(
-    () => filterInspectorRows(rig, groupedRows, { query: filter, facet, tracedChannelIds }),
-    [rig, groupedRows, filter, facet, tracedChannelIds],
+    () => filterInspectorRows(rig, visibleBaseRows, { query: filter, facet, tracedChannelIds }),
+    [rig, visibleBaseRows, filter, facet, tracedChannelIds],
   );
 
   const toggleFacet = (next: InspectorFacet) => {
-    setFacet((cur) => (cur === next ? null : next));
+    setFacet((cur) => {
+      const updated = cur === next ? null : next;
+      if (updated === 'vacant') setShowVacant(true);
+      return updated;
+    });
   };
 
   return (
     <aside className="flex h-full w-full flex-col border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827]">
       {/* Compact Header */}
       <div className="border-b border-slate-200 dark:border-slate-800 px-3.5 py-2.5 shrink-0">
-        {/* Top Breadcrumb + Protocol + Actions */}
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
@@ -687,7 +728,6 @@ function TrunkInspectorView({
           </div>
         </div>
 
-        {/* Identity Row + Collapsible Cable Info/Edit Trigger */}
         <div className="mt-1.5 flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h2 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
@@ -701,7 +741,7 @@ function TrunkInspectorView({
               >
                 {compactNodeTabLabel(srcName)} ({trunk.sourcePortGroup})
               </button>
-              {trunk.returnChannels.length > 0 ? (
+              {hasReturnTab ? (
                 <ArrowLeftRight className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0" />
               ) : (
                 <ArrowRight className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0" />
@@ -713,6 +753,11 @@ function TrunkInspectorView({
               >
                 {compactNodeTabLabel(tgtName)} ({trunk.targetPortGroup})
               </button>
+              {!hasReturnTab && activeCapacity > 0 && (
+                <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
+                  · {trunk.channels.length}/{activeCapacity} used
+                </span>
+              )}
             </div>
           </div>
 
@@ -743,7 +788,6 @@ function TrunkInspectorView({
           )}
         </div>
 
-        {/* Collapsible Trunk Notes / Edit Drawer */}
         {detailsOpen && (
           <div className="mt-2 rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-2.5 space-y-2">
             {editMode ? (
@@ -809,8 +853,8 @@ function TrunkInspectorView({
           </div>
         )}
 
-        {/* Endpoint-Labeled Direction Tabs */}
-        {trunk.returnChannels.length > 0 && (
+        {/* Endpoint-Labeled Direction Tabs with Used/Capacity */}
+        {hasReturnTab && (
           <div className="mt-2.5 grid grid-cols-2 gap-1 rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-[#0b111d] p-0.5">
             <button
               type="button"
@@ -818,14 +862,15 @@ function TrunkInspectorView({
                 setDirectionTab('forward');
                 setFacet(null);
               }}
-              title={`${srcName} → ${tgtName}`}
+              title={`${srcName} → ${tgtName} (${trunk.channels.length}/${fwdCapacity} lanes used)`}
               className={`rounded-[1px] px-2 py-1 text-[11px] font-semibold truncate transition-colors cursor-pointer ${
                 effectiveDir === 'forward'
                   ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-2xs border border-slate-200/80 dark:border-slate-700'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              {compactNodeTabLabel(srcName)} → {compactNodeTabLabel(tgtName)} ({trunk.channels.length})
+              {compactNodeTabLabel(srcName)} → {compactNodeTabLabel(tgtName)} ({trunk.channels.length}
+              {fwdCapacity > 0 ? `/${fwdCapacity}` : ''})
             </button>
             <button
               type="button"
@@ -833,14 +878,16 @@ function TrunkInspectorView({
                 setDirectionTab('return');
                 setFacet(null);
               }}
-              title={`${tgtName} → ${srcName}`}
+              title={`${tgtName} → ${srcName} (${trunk.returnChannels.length}/${retCapacity} lanes used)`}
               className={`rounded-[1px] px-2 py-1 text-[11px] font-semibold truncate transition-colors cursor-pointer ${
                 effectiveDir === 'return'
                   ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-2xs border border-slate-200/80 dark:border-slate-700'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              {compactNodeTabLabel(tgtName)} → {compactNodeTabLabel(srcName)} ({trunk.returnChannels.length})
+              {compactNodeTabLabel(tgtName)} → {compactNodeTabLabel(srcName)} (
+              {trunk.returnChannels.length}
+              {retCapacity > 0 ? `/${retCapacity}` : ''})
             </button>
           </div>
         )}
@@ -854,7 +901,7 @@ function TrunkInspectorView({
                 type="text"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
-                placeholder="Filter slots, names, routes, cable tags..."
+                placeholder="Filter slots, names, routes, vacant..."
                 className="w-full rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 pl-8 pr-7 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:bg-white dark:focus:bg-[#090d14] focus:outline-none"
               />
               {filter && (
@@ -880,14 +927,48 @@ function TrunkInspectorView({
             >
               ST {groupStereo ? 'ON' : 'OFF'}
             </button>
+            {facetCounts.vacant > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowVacant((v) => {
+                    const next = !v;
+                    if (!next && facet === 'vacant') setFacet(null);
+                    return next;
+                  });
+                }}
+                title="Show or hide vacant / open trunk lanes in list"
+                className={`shrink-0 rounded-[2px] border px-2 py-1.5 font-mono text-[10.5px] font-semibold transition-colors cursor-pointer ${
+                  showVacant
+                    ? 'border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
+                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                }`}
+              >
+                Vacant {showVacant ? 'ON' : 'OFF'}
+              </button>
+            )}
           </div>
 
           {(facetCounts.phantom > 0 ||
             facetCounts.passthrough > 0 ||
             facetCounts.notes > 0 ||
+            facetCounts.vacant > 0 ||
             facetCounts.traced > 0 ||
             facet !== null) && (
             <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-0.5">
+              {facetCounts.vacant > 0 && (
+                <button
+                  type="button"
+                  onClick={() => toggleFacet('vacant')}
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                    facet === 'vacant'
+                      ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300'
+                      : 'border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
+                  }`}
+                >
+                  Vacant ({facetCounts.vacant})
+                </button>
+              )}
               {facetCounts.phantom > 0 && (
                 <button
                   type="button"
@@ -969,21 +1050,23 @@ function TrunkInspectorView({
           </div>
         ) : (
           filteredRows.map((row) => {
-            const traceTarget: TraceTarget = {
-              type: 'trunk-channel',
-              nodeId: effectiveDir === 'return' ? trunk.targetNodeId : trunk.sourceNodeId,
-              trunkId: trunk.id,
-              direction: effectiveDir,
-              slot: row.primary.slot,
-              channelId: row.primary.id,
-            };
+            const traceTarget: TraceTarget | undefined = row.primary
+              ? {
+                  type: 'trunk-channel',
+                  nodeId: effectiveDir === 'return' ? trunk.targetNodeId : trunk.sourceNodeId,
+                  trunkId: trunk.id,
+                  direction: effectiveDir,
+                  slot: row.primary.slot,
+                  channelId: row.primary.id,
+                }
+              : undefined;
             const isTraced = row.channelIds.some((id) => tracedChannelIds.has(id));
             return (
               <ChannelInspectorRow
                 key={row.key}
                 rig={rig}
                 row={row}
-                isOutputView={effectiveDir === 'return' || Boolean(row.primary.sourceRef)}
+                isOutputView={effectiveDir === 'return' || Boolean(row.primary?.sourceRef)}
                 editMode={editMode}
                 isTraced={isTraced}
                 isExpanded={expandedRowKey === row.key}
@@ -992,6 +1075,7 @@ function TrunkInspectorView({
                 onSelectTrunk={onSelectTrunk}
                 onUpdateChannelAnnotation={onUpdateChannelAnnotation}
                 onToggleExpandAndTrace={() => {
+                  if (!traceTarget) return;
                   setExpandedRowKey((cur) => (cur === row.key ? null : row.key));
                   onRunTrace(traceTarget);
                 }}
@@ -1030,18 +1114,20 @@ function NodeInspectorView({
   const [filter, setFilter] = useState('');
   const [facet, setFacet] = useState<InspectorFacet | null>(null);
   const [groupStereo, setGroupStereo] = useState(true);
+  const [showVacant, setShowVacant] = useState(true);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
 
   // Strips tab state
   const [stripKindFilter, setStripKindFilter] = useState<'all' | 'ch' | 'aux'>('all');
   const [stripQuery, setStripQuery] = useState('');
-  const [stripPhantomOnly, setStripPhantomOnly] = useState(false);
+  const [stripFacet, setStripFacet] = useState<'48v' | 'vacant' | null>(null);
   const [expandedStripId, setExpandedStripId] = useState<string | null>(null);
 
   // Buses tab state
   const [busKindFilter, setBusKindFilter] = useState<'all' | MixBusKind>('all');
   const [busQuery, setBusQuery] = useState('');
+  const [busVacantOnly, setBusVacantOnly] = useState(false);
   const [editingBusId, setEditingBusId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1061,14 +1147,13 @@ function NodeInspectorView({
   const passthroughInputKeys = useMemo(() => buildNodePassthroughInputSet(node), [node]);
 
   const strips = node.channelStrips ?? [];
-  const hasStrips = strips.length > 0;
-  const hasBuses = node.mixBuses.length > 0;
+  const hasStrips = node.kind === 'console' || strips.length > 0;
+  const hasBuses = node.kind === 'console' || node.mixBuses.length > 0;
   const totalIoChannels = useMemo(
     () => node.portGroups.reduce((sum, pg) => sum + pg.channels.length, 0),
     [node.portGroups],
   );
 
-  // Distinct directions & port codes on this device
   const hasBothDirections = useMemo(() => {
     const hasIn = node.portGroups.some((pg) => pg.direction !== 'output');
     const hasOut = node.portGroups.some((pg) => pg.direction === 'output');
@@ -1081,8 +1166,8 @@ function NodeInspectorView({
     return [...seen];
   }, [node.portGroups]);
 
-  // Scoped port groups (after Direction + Port filter, BEFORE text/facet filter so facet counts stay accurate)
-  const scopedGroupsWithRows = useMemo(() => {
+  // Scoped port groups WITH vacants (so vacant counts are always accurate)
+  const scopedGroupsAll = useMemo(() => {
     return node.portGroups
       .filter((pg) => {
         if (dirFilter === 'input') return pg.direction !== 'output';
@@ -1090,15 +1175,19 @@ function NodeInspectorView({
         return true;
       })
       .filter((pg) => portFilter === 'all' || pg.code === portFilter)
-      .map((pg) => ({
-        pg,
-        rows: groupInspectorChannels(rig, pg.channels, {
+      .map((pg) => {
+        const allRows = groupInspectorChannels(rig, pg.channels, {
           groupStereo,
+          includeVacant: true,
+          capacity: pg.capacity,
+          keyPrefix: pg.id,
           isConsoleInput: node.kind === 'console' && pg.direction !== 'output',
           portCode: pg.code,
           passthroughInputKeys,
-        }),
-      }));
+        });
+        const vacantCount = allRows.filter((r) => r.isVacant).length;
+        return { pg, allRows, vacantCount };
+      });
   }, [node, rig, dirFilter, portFilter, groupStereo, passthroughInputKeys]);
 
   const facetCounts = useMemo(() => {
@@ -1106,9 +1195,14 @@ function NodeInspectorView({
     let passthrough = 0;
     let notes = 0;
     let unpatched = 0;
+    let vacant = 0;
     let traced = 0;
-    for (const { rows } of scopedGroupsWithRows) {
-      for (const r of rows) {
+    for (const { allRows } of scopedGroupsAll) {
+      for (const r of allRows) {
+        if (r.isVacant) {
+          vacant += 1;
+          continue;
+        }
         if (r.phantom48v) phantom += 1;
         if (r.isPassthrough) passthrough += 1;
         if (r.hasAnnotation) notes += 1;
@@ -1116,76 +1210,141 @@ function NodeInspectorView({
         if (r.channelIds.some((id) => tracedChannelIds.has(id))) traced += 1;
       }
     }
-    return { phantom, passthrough, notes, unpatched, traced };
-  }, [scopedGroupsWithRows, tracedChannelIds]);
+    return { phantom, passthrough, notes, unpatched, vacant, traced };
+  }, [scopedGroupsAll, tracedChannelIds]);
 
   const visiblePortGroups = useMemo(() => {
-    return scopedGroupsWithRows
-      .map(({ pg, rows }) => ({
-        pg,
-        rows: filterInspectorRows(rig, rows, { query: filter, facet, tracedChannelIds }),
-      }))
+    return scopedGroupsAll
+      .map(({ pg, allRows, vacantCount }) => {
+        const baseRows =
+          showVacant || facet === 'vacant' ? allRows : allRows.filter((r) => !r.isVacant);
+        return {
+          pg,
+          vacantCount,
+          rows: filterInspectorRows(rig, baseRows, { query: filter, facet, tracedChannelIds }),
+        };
+      })
       .filter(({ rows }) => rows.length > 0);
-  }, [scopedGroupsWithRows, rig, filter, facet, tracedChannelIds]);
+  }, [scopedGroupsAll, showVacant, rig, filter, facet, tracedChannelIds]);
 
-  // Strips data enriched with source preamp info
-  const enrichedStrips = useMemo(() => {
-    return strips.map((strip) => ({
-      strip,
-      source: findStripSourceChannel(node, strip),
-    }));
-  }, [strips, node]);
-
-  const stripHasAux = useMemo(() => strips.some((s) => s.kind === 'aux'), [strips]);
-  const stripPhantomCount = useMemo(
-    () => enrichedStrips.filter((s) => Boolean(s.source?.channel.phantom48v)).length,
-    [enrichedStrips],
+  // Console Strips (CH 1..40, AUX 1..8) with optional vacant rows
+  const allStripRows = useMemo(
+    () => buildConsoleStripRows(node, { includeVacant: node.kind === 'console' }),
+    [node],
   );
+
+  const stripCounts = useMemo(() => {
+    let phantom = 0;
+    let vacant = 0;
+    for (const row of allStripRows) {
+      if (row.isVacant) vacant += 1;
+      else if (row.source?.channel.phantom48v) phantom += 1;
+    }
+    return { phantom, vacant };
+  }, [allStripRows]);
 
   const filteredStrips = useMemo(() => {
     const q = stripQuery.trim().toLowerCase();
-    return enrichedStrips.filter(({ strip, source }) => {
-      if (stripKindFilter !== 'all' && strip.kind !== stripKindFilter) return false;
-      if (stripPhantomOnly && !source?.channel.phantom48v) return false;
+    const isVacantQ = q === 'vacant' || q === 'unused' || q === 'open';
+    const base =
+      showVacant || stripFacet === 'vacant'
+        ? allStripRows
+        : allStripRows.filter((r) => !r.isVacant);
+
+    return base.filter((row) => {
+      if (stripKindFilter !== 'all' && row.kind !== stripKindFilter) return false;
+      if (stripFacet === 'vacant' && !row.isVacant) return false;
+      if (stripFacet === '48v' && !row.source?.channel.phantom48v) return false;
       if (!q) return true;
-      const label = `${strip.kind} ${strip.index}`.toLowerCase();
+
+      const label = `${row.kind} ${row.index}`.toLowerCase();
+      const paddedLabel = `${row.kind} ${padSlot(row.index)}`.toLowerCase();
+
+      if (row.isVacant) {
+        return (
+          isVacantQ ||
+          'vacant'.includes(q) ||
+          'unused'.includes(q) ||
+          label.includes(q) ||
+          paddedLabel.includes(q) ||
+          String(row.index) === q
+        );
+      }
+
+      const strip = row.strip!;
       const srcStr = `${strip.sourceGroup}.${strip.sourceSlot}`.toLowerCase();
       return (
         strip.resolvedName.toLowerCase().includes(q) ||
         strip.rawName.toLowerCase().includes(q) ||
         label.includes(q) ||
+        paddedLabel.includes(q) ||
         srcStr.includes(q) ||
         String(strip.index) === q
       );
     });
-  }, [enrichedStrips, stripKindFilter, stripPhantomOnly, stripQuery]);
+  }, [allStripRows, showVacant, stripKindFilter, stripFacet, stripQuery]);
 
-  // Mix buses filter
+  // Mix Buses (BUS 1..16, MTX 1..8, MAIN 1..4, MON 1..2) with optional vacant rows
+  const allBusRows = useMemo(
+    () => buildConsoleBusRows(node, { includeVacant: node.kind === 'console' }),
+    [node],
+  );
+
+  const busVacantCount = useMemo(
+    () => allBusRows.filter((r) => r.isVacant).length,
+    [allBusRows],
+  );
+
   const availableBusKinds = useMemo(() => {
     const order: MixBusKind[] = ['bus', 'mtx', 'main', 'mon'];
+    if (node.kind === 'console' && (showVacant || busVacantOnly)) {
+      return order;
+    }
     return order.filter((k) => node.mixBuses.some((b) => b.kind === k));
-  }, [node.mixBuses]);
+  }, [node.kind, node.mixBuses, showVacant, busVacantOnly]);
 
   const filteredBuses = useMemo(() => {
     const q = busQuery.trim().toLowerCase();
-    return node.mixBuses.filter((bus) => {
-      if (busKindFilter !== 'all' && bus.kind !== busKindFilter) return false;
+    const isVacantQ = q === 'vacant' || q === 'unused' || q === 'open';
+    const base =
+      showVacant || busVacantOnly ? allBusRows : allBusRows.filter((r) => !r.isVacant);
+
+    return base.filter((row) => {
+      if (busKindFilter !== 'all' && row.kind !== busKindFilter) return false;
+      if (busVacantOnly && !row.isVacant) return false;
       if (!q) return true;
+
+      const kindLabel = `${row.kind} ${row.index}`;
+      if (row.isVacant) {
+        return (
+          isVacantQ ||
+          'vacant'.includes(q) ||
+          'unused'.includes(q) ||
+          kindLabel.includes(q) ||
+          String(row.index) === q
+        );
+      }
+
+      const bus = row.bus!;
       const name = resolveBusName(rig, bus).toLowerCase();
       const busAnn = rig.annotations.buses[bus.id];
       const outs = bus.outputs.map((o) => `${o.group}.${o.slot}`.toLowerCase()).join(' ');
       return (
         name.includes(q) ||
-        `${bus.kind} ${bus.index}`.includes(q) ||
+        kindLabel.includes(q) ||
         outs.includes(q) ||
         (bus.monitorSource?.rawRef.toLowerCase().includes(q) ?? false) ||
         (busAnn?.notes?.toLowerCase().includes(q) ?? false)
       );
     });
-  }, [node.mixBuses, busKindFilter, busQuery, rig]);
+  }, [allBusRows, showVacant, busVacantOnly, busKindFilter, busQuery, rig]);
 
   const toggleFacet = (next: InspectorFacet) => {
-    setFacet((cur) => (cur === next ? null : next));
+    setFacet((cur) => {
+      const updated = cur === next ? null : next;
+      if (updated === 'vacant') setShowVacant(true);
+      return updated;
+    });
   };
 
   const tabCount = 1 + (hasStrips ? 1 : 0) + (hasBuses ? 1 : 0);
@@ -1194,7 +1353,6 @@ function NodeInspectorView({
     <aside className="flex h-full w-full flex-col border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827]">
       {/* Compact Header */}
       <div className="border-b border-slate-200 dark:border-slate-800 px-3.5 py-2.5 shrink-0">
-        {/* Top Breadcrumb + Actions (replaces ambiguous X + Collapse) */}
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
@@ -1241,7 +1399,6 @@ function NodeInspectorView({
           </div>
         </div>
 
-        {/* Compact Identity + Collapsible Details Trigger */}
         <div className="mt-1.5 flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h2 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
@@ -1287,7 +1444,6 @@ function NodeInspectorView({
           </button>
         </div>
 
-        {/* Collapsible Notes, Snapshot Meta, Connected Trunks & Edit Form */}
         {detailsOpen && (
           <div className="mt-2 rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-2.5 space-y-2">
             {editMode ? (
@@ -1428,7 +1584,7 @@ function NodeInspectorView({
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
-                Strips ({strips.length})
+                Strips ({strips.length}/{allStripRows.length})
               </button>
             )}
             {hasBuses && (
@@ -1441,7 +1597,7 @@ function NodeInspectorView({
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
-                Buses ({node.mixBuses.length})
+                Buses ({node.mixBuses.length}/{allBusRows.length})
               </button>
             )}
           </div>
@@ -1450,7 +1606,7 @@ function NodeInspectorView({
         {/* Tab-Specific Compact Filter Toolbar */}
         {tab === 'io' && (
           <div className="mt-2 space-y-1.5">
-            {/* Row 1: Search + Clear + ST Pairs Toggle */}
+            {/* Row 1: Search + Clear + ST Toggle + Vacant Toggle */}
             <div className="flex items-center gap-1.5">
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
@@ -1458,7 +1614,7 @@ function NodeInspectorView({
                   type="text"
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
-                  placeholder="Search slot, name, CH #, tag..."
+                  placeholder="Search slot, name, CH #, vacant..."
                   className="w-full rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 pl-8 pr-7 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:bg-white dark:focus:bg-[#090d14] focus:outline-none"
                 />
                 {filter && (
@@ -1484,11 +1640,32 @@ function NodeInspectorView({
               >
                 ST {groupStereo ? 'ON' : 'OFF'}
               </button>
+              {facetCounts.vacant > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowVacant((v) => {
+                      const next = !v;
+                      if (!next && facet === 'vacant') setFacet(null);
+                      return next;
+                    });
+                  }}
+                  title="Show or hide vacant / open slots in list"
+                  className={`shrink-0 rounded-[2px] border px-2 py-1.5 font-mono text-[10.5px] font-semibold transition-colors cursor-pointer ${
+                    showVacant
+                      ? 'border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+                >
+                  Vacant {showVacant ? 'ON' : 'OFF'}
+                </button>
+              )}
             </div>
 
-            {/* Row 2: Direction Toggle + Port Select + 1-Click Facet Pills (single scrollable row) */}
+            {/* Row 2: Direction Toggle + Port Select + 1-Click Facet Pills */}
             {(hasBothDirections ||
               portCodes.length > 1 ||
+              facetCounts.vacant > 0 ||
               facetCounts.phantom > 0 ||
               facetCounts.passthrough > 0 ||
               facetCounts.notes > 0 ||
@@ -1534,6 +1711,20 @@ function NodeInspectorView({
                       </option>
                     ))}
                   </select>
+                )}
+
+                {facetCounts.vacant > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => toggleFacet('vacant')}
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                      facet === 'vacant'
+                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300'
+                        : 'border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-400'
+                    }`}
+                  >
+                    Vacant ({facetCounts.vacant})
+                  </button>
                 )}
 
                 {facetCounts.phantom > 0 && (
@@ -1621,7 +1812,7 @@ function NodeInspectorView({
                   type="text"
                   value={stripQuery}
                   onChange={(e) => setStripQuery(e.target.value)}
-                  placeholder="Search CH #, AUX #, name, source..."
+                  placeholder="Search CH #, AUX #, name, vacant..."
                   className="w-full rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 pl-8 pr-7 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:bg-white dark:focus:bg-[#090d14] focus:outline-none"
                 />
                 {stripQuery && (
@@ -1636,15 +1827,149 @@ function NodeInspectorView({
                 )}
               </div>
 
-              {stripHasAux && (
-                <div className="inline-flex shrink-0 rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-[#0b111d] p-0.5 text-[10.5px]">
-                  {(['all', 'ch', 'aux'] as const).map((k) => (
+              {stripCounts.vacant > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowVacant((v) => {
+                      const next = !v;
+                      if (!next && stripFacet === 'vacant') setStripFacet(null);
+                      return next;
+                    });
+                  }}
+                  className={`shrink-0 rounded-[2px] border px-2 py-1.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                    showVacant
+                      ? 'border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500'
+                  }`}
+                >
+                  Vacant {showVacant ? 'ON' : 'OFF'}
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-0.5">
+              <div className="inline-flex shrink-0 rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-[#0b111d] p-0.5 text-[10.5px]">
+                {(['all', 'ch', 'aux'] as const).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setStripKindFilter(k)}
+                    className={`rounded-[1px] px-1.5 py-0.5 font-mono uppercase font-semibold cursor-pointer ${
+                      stripKindFilter === k
+                        ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
+                        : 'text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    {k}
+                  </button>
+                ))}
+              </div>
+
+              {stripCounts.vacant > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStripFacet((cur) => {
+                      const next = cur === 'vacant' ? null : 'vacant';
+                      if (next === 'vacant') setShowVacant(true);
+                      return next;
+                    });
+                  }}
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                    stripFacet === 'vacant'
+                      ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300'
+                      : 'border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300'
+                  }`}
+                >
+                  Vacant ({stripCounts.vacant})
+                </button>
+              )}
+
+              {stripCounts.phantom > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setStripFacet((cur) => (cur === '48v' ? null : '48v'))}
+                  className={`inline-flex shrink-0 items-center gap-0.5 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                    stripFacet === '48v'
+                      ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300'
+                  }`}
+                >
+                  <Zap className="w-2.5 h-2.5" />
+                  48V ({stripCounts.phantom})
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === 'buses' && (
+          <div className="mt-2 space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
+                <input
+                  type="text"
+                  value={busQuery}
+                  onChange={(e) => setBusQuery(e.target.value)}
+                  placeholder="Filter buses, IEMs, outputs, vacant..."
+                  className="w-full rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 pl-8 pr-7 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:bg-white dark:focus:bg-[#090d14] focus:outline-none"
+                />
+                {busQuery && (
+                  <button
+                    type="button"
+                    aria-label="Clear bus filter"
+                    onClick={() => setBusQuery('')}
+                    className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {busVacantCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowVacant((v) => {
+                      const next = !v;
+                      if (!next) setBusVacantOnly(false);
+                      return next;
+                    });
+                  }}
+                  className={`shrink-0 rounded-[2px] border px-2 py-1.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                    showVacant
+                      ? 'border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500'
+                  }`}
+                >
+                  Vacant {showVacant ? 'ON' : 'OFF'}
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-0.5">
+              {availableBusKinds.length > 1 && (
+                <div className="inline-flex shrink-0 rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-[#0b111d] p-0.5 text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() => setBusKindFilter('all')}
+                    className={`rounded-[1px] px-1.5 py-0.5 font-mono uppercase font-semibold cursor-pointer ${
+                      busKindFilter === 'all'
+                        ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
+                        : 'text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    All
+                  </button>
+                  {availableBusKinds.map((k) => (
                     <button
                       key={k}
                       type="button"
-                      onClick={() => setStripKindFilter(k)}
+                      onClick={() => setBusKindFilter(k)}
                       className={`rounded-[1px] px-1.5 py-0.5 font-mono uppercase font-semibold cursor-pointer ${
-                        stripKindFilter === k
+                        busKindFilter === k
                           ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
                           : 'text-slate-600 dark:text-slate-400'
                       }`}
@@ -1655,76 +1980,26 @@ function NodeInspectorView({
                 </div>
               )}
 
-              {stripPhantomCount > 0 && (
+              {busVacantCount > 0 && (
                 <button
                   type="button"
-                  onClick={() => setStripPhantomOnly((v) => !v)}
-                  className={`inline-flex shrink-0 items-center gap-0.5 rounded-[2px] border px-1.5 py-1 font-mono text-[10.5px] font-semibold cursor-pointer ${
-                    stripPhantomOnly
-                      ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300'
-                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300'
+                  onClick={() => {
+                    setBusVacantOnly((v) => {
+                      const next = !v;
+                      if (next) setShowVacant(true);
+                      return next;
+                    });
+                  }}
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-[1px] border px-1.5 py-0.5 font-mono text-[10.5px] font-semibold cursor-pointer ${
+                    busVacantOnly
+                      ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300'
+                      : 'border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300'
                   }`}
                 >
-                  <Zap className="w-2.5 h-2.5" />
-                  48V
+                  Vacant ({busVacantCount})
                 </button>
               )}
             </div>
-          </div>
-        )}
-
-        {tab === 'buses' && (
-          <div className="mt-2 flex items-center gap-1.5">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-              <input
-                type="text"
-                value={busQuery}
-                onChange={(e) => setBusQuery(e.target.value)}
-                placeholder="Filter buses, IEMs, outputs..."
-                className="w-full rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 pl-8 pr-7 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:bg-white dark:focus:bg-[#090d14] focus:outline-none"
-              />
-              {busQuery && (
-                <button
-                  type="button"
-                  aria-label="Clear bus filter"
-                  onClick={() => setBusQuery('')}
-                  className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            {availableBusKinds.length > 1 && (
-              <div className="inline-flex shrink-0 rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-[#0b111d] p-0.5 text-[10px]">
-                <button
-                  type="button"
-                  onClick={() => setBusKindFilter('all')}
-                  className={`rounded-[1px] px-1.5 py-0.5 font-mono uppercase font-semibold cursor-pointer ${
-                    busKindFilter === 'all'
-                      ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
-                      : 'text-slate-600 dark:text-slate-400'
-                  }`}
-                >
-                  All
-                </button>
-                {availableBusKinds.map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => setBusKindFilter(k)}
-                    className={`rounded-[1px] px-1.5 py-0.5 font-mono uppercase font-semibold cursor-pointer ${
-                      busKindFilter === k
-                        ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
-                        : 'text-slate-600 dark:text-slate-400'
-                    }`}
-                  >
-                    {k}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -1753,7 +2028,7 @@ function NodeInspectorView({
               )}
             </div>
           ) : (
-            visiblePortGroups.map(({ pg, rows }) => {
+            visiblePortGroups.map(({ pg, rows, vacantCount }) => {
               const proto = PROTOCOL_META[portCodeToProtocol(pg.code)];
               const accent = isDark ? proto.darkColor : proto.color;
               return (
@@ -1770,17 +2045,20 @@ function NodeInspectorView({
                     </div>
                     <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">
                       {pg.direction === 'output' ? 'OUT' : 'IN'} · {pg.channels.length}/{pg.capacity}
+                      {vacantCount > 0 ? ` · ${vacantCount} open` : ''}
                     </span>
                   </div>
                   {rows.map((row) => {
-                    const traceTarget: TraceTarget = {
-                      type: 'channel',
-                      nodeId: node.id,
-                      portDirection: pg.direction === 'output' ? 'out' : 'in',
-                      group: pg.code,
-                      slot: row.primary.slot,
-                      channelId: row.primary.id,
-                    };
+                    const traceTarget: TraceTarget | undefined = row.primary
+                      ? {
+                          type: 'channel',
+                          nodeId: node.id,
+                          portDirection: pg.direction === 'output' ? 'out' : 'in',
+                          group: pg.code,
+                          slot: row.primary.slot,
+                          channelId: row.primary.id,
+                        }
+                      : undefined;
                     const isTraced = row.channelIds.some((id) => tracedChannelIds.has(id));
                     return (
                       <ChannelInspectorRow
@@ -1796,6 +2074,7 @@ function NodeInspectorView({
                         onSelectTrunk={onSelectTrunk}
                         onUpdateChannelAnnotation={onUpdateChannelAnnotation}
                         onToggleExpandAndTrace={() => {
+                          if (!traceTarget) return;
                           setExpandedRowKey((cur) => (cur === row.key ? null : row.key));
                           onRunTrace(traceTarget);
                         }}
@@ -1813,25 +2092,25 @@ function NodeInspectorView({
             </div>
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
-              {filteredStrips.map(({ strip, source }) => (
+              {filteredStrips.map((row) => (
                 <ConsoleStripRow
-                  key={strip.id}
+                  key={row.key}
                   rig={rig}
                   node={node}
-                  strip={strip}
-                  source={source}
-                  isTraced={Boolean(source && tracedChannelIds.has(source.channel.id))}
-                  isExpanded={expandedStripId === strip.id}
+                  row={row}
+                  isTraced={Boolean(row.source && tracedChannelIds.has(row.source.channel.id))}
+                  isExpanded={expandedStripId === row.key}
                   onToggle={() => {
-                    setExpandedStripId((cur) => (cur === strip.id ? null : strip.id));
-                    if (source) {
+                    if (row.isVacant || !row.strip) return;
+                    setExpandedStripId((cur) => (cur === row.key ? null : row.key));
+                    if (row.source) {
                       onRunTrace({
                         type: 'channel',
                         nodeId: node.id,
                         portDirection: 'in',
-                        group: source.portGroup.code,
-                        slot: source.channel.slot,
-                        channelId: source.channel.id,
+                        group: row.source.portGroup.code,
+                        slot: row.source.channel.slot,
+                        channelId: row.source.channel.id,
                       });
                     }
                   }}
@@ -1854,7 +2133,29 @@ function NodeInspectorView({
           </div>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
-            {filteredBuses.map((bus) => {
+            {filteredBuses.map((row) => {
+              if (row.isVacant || !row.bus) {
+                return (
+                  <div
+                    key={row.key}
+                    className="flex items-center justify-between gap-2 bg-slate-50/45 dark:bg-[#0b111d]/55 px-3 py-1.5 select-none"
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="inline-flex shrink-0 items-center rounded-[1px] border border-dashed border-slate-300/90 dark:border-slate-700/80 px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase text-slate-400 dark:text-slate-500">
+                        {row.kind} {row.index}
+                      </span>
+                      <span className="text-[11.5px] italic text-slate-400 dark:text-slate-500">
+                        Vacant
+                      </span>
+                    </div>
+                    <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-slate-400/80 dark:text-slate-600">
+                      Open
+                    </span>
+                  </div>
+                );
+              }
+
+              const bus = row.bus;
               const isTraced = tracedBusIds.has(bus.id);
               const busAnn = rig.annotations.buses[bus.id];
               const senderCount = countBusSenders(node, bus);
@@ -1914,7 +2215,7 @@ function NodeInspectorView({
 
                     <div className="flex items-center gap-1.5 shrink-0">
                       {senderCount > 0 && (
-                        <span className="font-mono text-[10.5px] text-slate-500 dark:text-slate-400 tabular-nums">
+                        <span className="font-mono text-[10.5px] text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
                           {senderCount} ch →
                         </span>
                       )}
@@ -1941,14 +2242,12 @@ function NodeInspectorView({
                     </div>
                   </div>
 
-                  {/* Source tap for MON buses */}
                   {bus.monitorSource && (
                     <div className="mt-1 font-mono text-[10.5px] text-amber-800 dark:text-amber-300">
                       Source tap: {bus.monitorSource.rawRef}
                     </div>
                   )}
 
-                  {/* Collapsed Stereo Output Chips + Indirect MON Routing */}
                   {(collapsedOutputs.length > 0 || indirectMons.length > 0) && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {collapsedOutputs.map((out) =>
@@ -2037,14 +2336,13 @@ function NodeInspectorView({
 }
 
 // =============================================================================
-// Console Channel Strip Row (CH 1-40 / AUX 1-8 Tab)
+// Console Channel Strip Row (CH 1-40 / AUX 1-8 Tab, Occupied + Vacant)
 // =============================================================================
 
 function ConsoleStripRow({
   rig,
   node,
-  strip,
-  source,
+  row,
   isTraced,
   isExpanded,
   onToggle,
@@ -2052,15 +2350,32 @@ function ConsoleStripRow({
 }: {
   rig: RigDocument;
   node: HardwareNode;
-  strip: ConsoleChannelStrip;
-  source: ReturnType<typeof findStripSourceChannel>;
+  row: InspectorStripRow;
   isTraced: boolean;
   isExpanded: boolean;
   onToggle: () => void;
   onTraceBus: (bus: MixBusSummary) => void;
 }) {
-  const ch = source?.channel;
-  const stripTag = `${strip.kind.toUpperCase()} ${padSlot(strip.index)}`;
+  const stripTag = `${row.kind.toUpperCase()} ${padSlot(row.index)}`;
+
+  if (row.isVacant || !row.strip) {
+    return (
+      <div className="flex items-center gap-2 bg-slate-50/45 dark:bg-[#0b111d]/55 px-3 py-1 select-none">
+        <span className="inline-flex h-5 w-12 shrink-0 items-center justify-center rounded-[1px] border border-dashed border-slate-300/90 dark:border-slate-700/80 font-mono text-[10px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
+          {stripTag}
+        </span>
+        <span className="flex-1 truncate text-[11.5px] italic text-slate-400 dark:text-slate-500">
+          Vacant
+        </span>
+        <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-slate-400/80 dark:text-slate-600">
+          OFF
+        </span>
+      </div>
+    );
+  }
+
+  const strip = row.strip;
+  const ch = row.source?.channel;
   const sourceBadge =
     strip.sourceGroup && strip.sourceSlot > 0
       ? ch?.mode === 'ST' && ch.stereoSide === 'L'
@@ -2116,10 +2431,12 @@ function ConsoleStripRow({
         </div>
 
         <div className="flex items-center gap-2 shrink-0 font-mono text-[10.5px] tabular-nums">
-          <span className="rounded-[1px] border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-1.5 py-0.5 text-slate-700 dark:text-slate-200">
+          <span className="rounded-[1px] border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-1.5 py-0.5 text-slate-700 dark:text-slate-200 whitespace-nowrap">
             {sourceBadge}
           </span>
-          <span className="w-11 text-right text-slate-500 dark:text-slate-400">{sendSummary}</span>
+          <span className="w-11 text-right text-slate-500 dark:text-slate-400 whitespace-nowrap">
+            {sendSummary}
+          </span>
           <span className="text-slate-400 dark:text-slate-500">
             {isExpanded ? (
               <ChevronDown className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
@@ -2349,7 +2666,6 @@ function OverviewInspectorView({
 
       {/* Scrollable Body */}
       <div className="flex-1 overflow-y-auto p-3.5 space-y-4">
-        {/* Active Trace Quick Card */}
         {trace && (
           <div className="rounded-[2px] border border-sky-300 dark:border-sky-700/80 bg-sky-50/80 dark:bg-sky-950/40 px-2.5 py-2 flex items-center justify-between gap-2 text-xs">
             <div className="min-w-0 flex items-center gap-1.5">
@@ -2373,7 +2689,6 @@ function OverviewInspectorView({
           </div>
         )}
 
-        {/* Rig Health / Path Verifier Strip */}
         {auditIssues.length > 0 ? (
           <div className="rounded-[2px] border border-amber-300 dark:border-amber-700/80 bg-amber-50/70 dark:bg-amber-950/30 overflow-hidden">
             <button
@@ -2434,7 +2749,6 @@ function OverviewInspectorView({
           </div>
         )}
 
-        {/* Zone-Grouped Hardware Blocks */}
         <div className="space-y-3">
           {zoneGroups.length === 0 ? (
             <div className="text-center text-xs text-slate-500 dark:text-slate-400 py-3">
@@ -2485,7 +2799,6 @@ function OverviewInspectorView({
           )}
         </div>
 
-        {/* Rich Signal Trunks */}
         <div>
           <h3 className="font-display mb-1.5 text-[10.5px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Signal Trunks ({filteredTrunks.length})
@@ -2536,7 +2849,6 @@ function OverviewInspectorView({
           </div>
         </div>
 
-        {/* Orphaned Annotations Tracker */}
         {rig.annotations.orphaned.length > 0 && (
           <div className="rounded-[2px] border border-amber-300 dark:border-amber-700/80 bg-amber-50/70 dark:bg-amber-950/40 p-3">
             <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900 dark:text-amber-200">
@@ -2580,7 +2892,6 @@ function OverviewInspectorView({
         )}
       </div>
 
-      {/* Volunteer-Safe Sticky Footer (Reset Demo gated behind Edit Mode + confirmation) */}
       {!lockedReadOnly && (
         <div className="border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-[#0b111d] px-3.5 py-2.5 shrink-0 flex items-center gap-2">
           <button

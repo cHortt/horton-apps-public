@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createMockRig } from '../../schema/mockRig';
 import {
+  buildConsoleBusRows,
+  buildConsoleStripRows,
   buildNodePassthroughInputSet,
   collapseBusOutputs,
   countBusSenders,
@@ -11,6 +13,7 @@ import {
   getConnectedTrunkChips,
   groupInspectorChannels,
   groupNodesByZone,
+  resolveTrunkDirectionCapacity,
 } from './inspectorHelpers';
 
 describe('inspectorHelpers', () => {
@@ -29,7 +32,7 @@ describe('inspectorHelpers', () => {
 
     // 32 raw slots contain 6 stereo pairs (Kit, Pad, Acoustic 1, Piano, Synth, Aux 2) -> 26 rows
     expect(paired.length).toBe(26);
-    const kitRow = paired.find((r) => r.primary.slot === 3)!;
+    const kitRow = paired.find((r) => r.slot === 3)!;
     expect(kitRow.isStereoPair).toBe(true);
     expect(kitRow.slotLabel).toBe('03–04');
     expect(kitRow.displayName).toBe('Kit');
@@ -44,8 +47,81 @@ describe('inspectorHelpers', () => {
     expect(ungrouped.length).toBe(32);
 
     // Stereo R partner of patched L slot (Kit R on slot 4) should NOT be flagged as unpatched
-    const kitR = ungrouped.find((r) => r.primary.slot === 4)!;
+    const kitR = ungrouped.find((r) => r.slot === 4)!;
     expect(kitR.isUnpatchedInput).toBe(false);
+  });
+
+  it('interleaves vacant slots in numeric order for Local Inputs (15/24) and respects outlier guard', () => {
+    const rig = createMockRig();
+    const stageWing = rig.nodes.find((n) => n.id === 'stage-wing')!;
+    const localIn = stageWing.portGroups.find((pg) => pg.id === 'stage-wing:in:LCL')!;
+
+    const withVacants = groupInspectorChannels(rig, localIn.channels, {
+      groupStereo: true,
+      includeVacant: true,
+      capacity: localIn.capacity,
+      keyPrefix: localIn.id,
+      isConsoleInput: true,
+      portCode: 'LCL',
+    });
+
+    // 15 occupied slots (with 2 stereo pairs -> 13 occupied rows) + 9 vacant slots (11..14, 20..24) = 22 rows
+    const vacantSlots = withVacants.filter((r) => r.isVacant).map((r) => r.slot);
+    expect(vacantSlots).toEqual([11, 12, 13, 14, 20, 21, 22, 23, 24]);
+    expect(withVacants.length).toBe(22);
+    // Verify numeric ordering (slot 11 appears right after 09-10 Choir and before 15-16 Room)
+    const idxChoir = withVacants.findIndex((r) => r.slot === 9);
+    const idx11 = withVacants.findIndex((r) => r.slot === 11);
+    const idxRoom = withVacants.findIndex((r) => r.slot === 15);
+    expect(idx11).toBe(idxChoir + 1);
+    expect(idxRoom).toBe(idx11 + 4);
+
+    // Outlier guard: pa-amp-rack:in:A has capacity 2 with single channel at slot 16 -> no bogus vacant slots 1..15
+    const paRack = rig.nodes.find((n) => n.id === 'pa-amp-rack')!;
+    const subReturn = paRack.portGroups.find((pg) => pg.id === 'pa-amp-rack:in:A')!;
+    const subRows = groupInspectorChannels(rig, subReturn.channels, {
+      groupStereo: true,
+      includeVacant: true,
+      capacity: subReturn.capacity,
+      keyPrefix: subReturn.id,
+    });
+    expect(subRows.map((r) => r.slot)).toEqual([16]);
+  });
+
+  it('resolves usable trunk direction capacities for AES50 stagebox and console-to-console snakes', () => {
+    const rig = createMockRig();
+    const aesA = rig.trunks.find((t) => t.id === 'trunk-aes50-a')!;
+    // DL32 (32x16) <-> Stage WING AES50-A (48x48) -> 32 forward, 16 return
+    expect(resolveTrunkDirectionCapacity(rig, aesA, 'forward')).toBe(32);
+    expect(resolveTrunkDirectionCapacity(rig, aesA, 'return')).toBe(16);
+
+    const aesC = rig.trunks.find((t) => t.id === 'trunk-aes50-c')!;
+    // Stage WING AES50-C (48) <-> FOH WING AES50-C (48) -> 48 forward, 48 return
+    expect(resolveTrunkDirectionCapacity(rig, aesC, 'forward')).toBe(48);
+    expect(resolveTrunkDirectionCapacity(rig, aesC, 'return')).toBe(48);
+
+    const wireless = rig.trunks.find((t) => t.id === 'trunk-wireless-lcl')!;
+    expect(resolveTrunkDirectionCapacity(rig, wireless, 'forward')).toBe(24);
+  });
+
+  it('builds full console strip (CH 1-40, AUX 1-8) and mix bus (BUS/MTX/MAIN/MON) lists with vacants', () => {
+    const rig = createMockRig();
+    const stageWing = rig.nodes.find((n) => n.id === 'stage-wing')!;
+
+    const allStrips = buildConsoleStripRows(stageWing, { includeVacant: true });
+    expect(allStrips.filter((s) => s.kind === 'ch')).toHaveLength(40);
+    expect(allStrips.filter((s) => s.kind === 'aux')).toHaveLength(8);
+    expect(allStrips.find((s) => s.kind === 'ch' && s.index === 22)?.isVacant).toBe(true);
+    expect(allStrips.find((s) => s.kind === 'aux' && s.index === 4)?.isVacant).toBe(true);
+    expect(allStrips.find((s) => s.kind === 'ch' && s.index === 1)?.isVacant).toBe(false);
+
+    const allBuses = buildConsoleBusRows(stageWing, { includeVacant: true });
+    expect(allBuses.filter((b) => b.kind === 'bus')).toHaveLength(16);
+    expect(allBuses.filter((b) => b.kind === 'mtx')).toHaveLength(8);
+    expect(allBuses.filter((b) => b.kind === 'main')).toHaveLength(4);
+    expect(allBuses.filter((b) => b.kind === 'mon')).toHaveLength(2);
+    expect(allBuses.find((b) => b.kind === 'bus' && b.index === 13)?.isVacant).toBe(true);
+    expect(allBuses.find((b) => b.kind === 'mtx' && b.index === 1)?.isVacant).toBe(true);
   });
 
   it('merges stereo L/R return routes and detects pass-through slots', () => {
@@ -63,7 +139,7 @@ describe('inspectorHelpers', () => {
     expect(paired[0].displayName).toBe('Drums');
     expect(paired[0].routeSummary).toBe('Bus 5 L/R (Drums)');
 
-    const subRow = paired.find((r) => r.primary.slot === 16)!;
+    const subRow = paired.find((r) => r.slot === 16)!;
     expect(subRow.isPassthrough).toBe(true);
     expect(subRow.hasAnnotation).toBe(true);
   });
@@ -81,43 +157,46 @@ describe('inspectorHelpers', () => {
       passthroughInputKeys: passthroughKeys,
     });
 
-    const subReturn = rows.find((r) => r.primary.slot === 48)!;
+    const subReturn = rows.find((r) => r.slot === 48)!;
     expect(subReturn.isPassthrough).toBe(true);
     expect(subReturn.isUnpatchedInput).toBe(false);
   });
 
-  it('filters rows accurately by facets (+48V, notes, passthrough, traced) and search text', () => {
+  it('filters rows accurately by facets (+48V, vacant, notes, traced) and search text', () => {
     const rig = createMockRig();
     const stageWing = rig.nodes.find((n) => n.id === 'stage-wing')!;
-    const aesAIn = stageWing.portGroups.find((pg) => pg.id === 'stage-wing:in:A')!;
-    const rows = groupInspectorChannels(rig, aesAIn.channels, {
+    const localIn = stageWing.portGroups.find((pg) => pg.id === 'stage-wing:in:LCL')!;
+    const rows = groupInspectorChannels(rig, localIn.channels, {
       groupStereo: true,
+      includeVacant: true,
+      capacity: localIn.capacity,
+      keyPrefix: localIn.id,
       isConsoleInput: true,
-      portCode: 'A',
+      portCode: 'LCL',
       passthroughInputKeys: buildNodePassthroughInputSet(stageWing),
     });
+
+    const vacantOnly = filterInspectorRows(rig, rows, {
+      query: '',
+      facet: 'vacant',
+      tracedChannelIds: new Set(),
+    });
+    expect(vacantOnly.map((r) => r.slot)).toEqual([11, 12, 13, 14, 20, 21, 22, 23, 24]);
 
     const phantomRows = filterInspectorRows(rig, rows, {
       query: '',
       facet: '48v',
       tracedChannelIds: new Set(),
     });
-    expect(phantomRows.map((r) => r.displayName)).toEqual(['Acoustic 2']);
-
-    const tracedOnly = filterInspectorRows(rig, rows, {
-      query: '',
-      facet: 'traced',
-      tracedChannelIds: new Set(['stage-wing:in:A:4']),
-    });
-    // Partner channel id matches the paired 03-04 Kit row
-    expect(tracedOnly.map((r) => r.slotLabel)).toEqual(['03–04']);
+    expect(phantomRows.map((r) => r.displayName)).toEqual(['Choir']);
 
     const slotSearch = filterInspectorRows(rig, rows, {
-      query: '11',
+      query: '13',
       facet: null,
       tracedChannelIds: new Set(),
     });
-    expect(slotSearch.some((r) => r.displayName === 'Acoustic 2')).toBe(true);
+    expect(slotSearch.map((r) => r.slot)).toEqual([13]);
+    expect(slotSearch[0].isVacant).toBe(true);
   });
 
   it('collapses bus stereo outputs, counts senders, and finds indirect monitor taps', () => {

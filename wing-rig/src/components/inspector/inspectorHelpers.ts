@@ -2,6 +2,7 @@ import type {
   ChannelPatch,
   ConsoleChannelStrip,
   HardwareNode,
+  MixBusKind,
   MixBusSummary,
   PortGroup,
   PortGroupCode,
@@ -17,12 +18,14 @@ import {
   resolveTrunkName,
 } from '../../schema/helpers';
 
-export type InspectorFacet = '48v' | 'passthrough' | 'notes' | 'unpatched' | 'traced';
+export type InspectorFacet = '48v' | 'passthrough' | 'notes' | 'unpatched' | 'vacant' | 'traced';
 
 export interface InspectorChannelRow {
   key: string;
-  primary: ChannelPatch;
+  slot: number;
+  primary?: ChannelPatch;
   partner?: ChannelPatch;
+  isVacant: boolean;
   isStereoPair: boolean;
   slotLabel: string;
   displayName: string;
@@ -36,6 +39,23 @@ export interface InspectorChannelRow {
   hasAnnotation: boolean;
   routeSummary?: string;
   channelIds: string[];
+}
+
+export interface InspectorStripRow {
+  key: string;
+  kind: 'ch' | 'aux';
+  index: number;
+  isVacant: boolean;
+  strip?: ConsoleChannelStrip;
+  source: { portGroup: PortGroup; channel: ChannelPatch } | null;
+}
+
+export interface InspectorBusRow {
+  key: string;
+  kind: MixBusKind;
+  index: number;
+  isVacant: boolean;
+  bus?: MixBusSummary;
 }
 
 export interface CollapsedBusOutput {
@@ -67,6 +87,26 @@ export const ZONE_ORDER: RigZone[] = [
   'Broadcast',
   'Custom',
 ];
+
+/** Verified Behringer WING console capacities */
+export const WING_STRIP_CAPACITIES: Record<'ch' | 'aux', number> = {
+  ch: 40,
+  aux: 8,
+};
+
+export const WING_BUS_CAPACITIES: Record<MixBusKind, number> = {
+  bus: 16,
+  mtx: 8,
+  main: 4,
+  mon: 2,
+};
+
+const PROTOCOL_DEFAULT_CAPACITY: Partial<Record<TrunkProtocol, number>> = {
+  aes50: 48,
+  stageconnect: 32,
+  dante: 64,
+  usb: 48,
+};
 
 export function stripStereoSuffix(name: string): string {
   return name.replace(/\s+(L|R|Left|Right)$/i, '').trim();
@@ -125,23 +165,54 @@ function mergeStereoRouteSummary(primaryRoute?: string, partnerRoute?: string): 
   return primaryRoute;
 }
 
+function makeVacantRow(slot: number, keyPrefix: string): InspectorChannelRow {
+  return {
+    key: `${keyPrefix}:vacant:${slot}`,
+    slot,
+    isVacant: true,
+    isStereoPair: false,
+    slotLabel: padSlot(slot),
+    displayName: 'Vacant',
+    rawBaseName: '',
+    phantom48v: false,
+    polarityInverted: false,
+    muted: false,
+    isPassthrough: false,
+    isUnpatchedInput: false,
+    hasAnnotation: false,
+    channelIds: [],
+  };
+}
+
 /**
  * Normalizes a list of ChannelPatch slots into scannable InspectorChannelRow items,
- * optionally collapsing adjacent Stereo L/R pairs into single rows.
+ * optionally collapsing adjacent Stereo L/R pairs and interleaving vacant slots up to `capacity`.
  */
 export function groupInspectorChannels(
   rig: RigDocument,
   channels: ChannelPatch[],
   options: {
     groupStereo: boolean;
+    includeVacant?: boolean;
+    capacity?: number;
+    keyPrefix?: string;
     isConsoleInput?: boolean;
     portCode?: PortGroupCode;
     passthroughInputKeys?: Set<string>;
   },
 ): InspectorChannelRow[] {
   const sorted = [...channels].sort((a, b) => a.slot - b.slot);
-  const rows: InspectorChannelRow[] = [];
-  const { groupStereo, isConsoleInput = false, portCode, passthroughInputKeys } = options;
+  const occupiedRows: InspectorChannelRow[] = [];
+  const occupiedSlots = new Set<number>();
+  const {
+    groupStereo,
+    includeVacant = false,
+    capacity = 0,
+    keyPrefix = 'slot',
+    isConsoleInput = false,
+    portCode,
+    passthroughInputKeys,
+  } = options;
 
   let i = 0;
   while (i < sorted.length) {
@@ -167,10 +238,14 @@ export function groupInspectorChannels(
       const hasStrip = Boolean(cur.consoleChannel || next.consoleChannel);
       const isUnpatchedInput = isConsoleInput && !hasStrip && !isPassthrough;
 
-      rows.push({
+      occupiedSlots.add(cur.slot);
+      occupiedSlots.add(next.slot);
+      occupiedRows.push({
         key: `${cur.id}+${next.id}`,
+        slot: cur.slot,
         primary: cur,
         partner: next,
+        isVacant: false,
         isStereoPair: true,
         slotLabel: `${padSlot(cur.slot)}–${padSlot(next.slot)}`,
         displayName: baseName,
@@ -206,9 +281,12 @@ export function groupInspectorChannels(
       const isUnpatchedInput =
         isConsoleInput && !cur.consoleChannel && !isPassthrough && !isStereoPartnerOfPatched;
 
-      rows.push({
+      occupiedSlots.add(cur.slot);
+      occupiedRows.push({
         key: cur.id,
+        slot: cur.slot,
         primary: cur,
+        isVacant: false,
         isStereoPair: false,
         slotLabel: padSlot(cur.slot),
         displayName: curName,
@@ -223,6 +301,204 @@ export function groupInspectorChannels(
         channelIds: [cur.id],
       });
       i += 1;
+    }
+  }
+
+  if (!includeVacant || capacity <= 0) {
+    return occupiedRows;
+  }
+
+  // Guard against outlier single-slot pass-through groups (e.g. capacity 2 with only slot 16)
+  const hasAnyInRange = sorted.length === 0 || sorted.some((c) => c.slot <= capacity);
+  if (!hasAnyInRange) {
+    return occupiedRows;
+  }
+
+  const combined: InspectorChannelRow[] = [...occupiedRows];
+  for (let slot = 1; slot <= capacity; slot++) {
+    if (!occupiedSlots.has(slot)) {
+      combined.push(makeVacantRow(slot, keyPrefix));
+    }
+  }
+  combined.sort((a, b) => a.slot - b.slot);
+  return combined;
+}
+
+/**
+ * Resolves the usable lane capacity for a trunk in either forward or return direction,
+ * intersecting endpoint PortGroup capacities when both endpoints declare them.
+ */
+export function resolveTrunkDirectionCapacity(
+  rig: RigDocument,
+  trunk: TrunkConnection,
+  direction: 'forward' | 'return',
+): number {
+  const activeList = direction === 'return' ? trunk.returnChannels : trunk.channels;
+  const maxOccupied = activeList.reduce((max, c) => Math.max(max, c.slot), 0);
+
+  const srcNodeId = direction === 'return' ? trunk.targetNodeId : trunk.sourceNodeId;
+  const srcGroup = direction === 'return' ? trunk.targetPortGroup : trunk.sourcePortGroup;
+  const tgtNodeId = direction === 'return' ? trunk.sourceNodeId : trunk.targetNodeId;
+  const tgtGroup = direction === 'return' ? trunk.sourcePortGroup : trunk.targetPortGroup;
+
+  const srcNode = rig.nodes.find((n) => n.id === srcNodeId);
+  const tgtNode = rig.nodes.find((n) => n.id === tgtNodeId);
+
+  const srcPg = srcNode?.portGroups.find(
+    (pg) => pg.code === srcGroup && pg.direction !== 'input' && pg.capacity > 0,
+  );
+  const tgtPg = tgtNode?.portGroups.find(
+    (pg) => pg.code === tgtGroup && pg.direction !== 'output' && pg.capacity > 0,
+  );
+
+  let inferred = 0;
+  if (srcPg && tgtPg) {
+    inferred = Math.min(srcPg.capacity, tgtPg.capacity);
+  } else if (srcPg) {
+    inferred = srcPg.capacity;
+  } else if (tgtPg) {
+    inferred = tgtPg.capacity;
+  } else {
+    inferred = PROTOCOL_DEFAULT_CAPACITY[trunk.protocol] ?? 0;
+  }
+
+  return Math.max(inferred, maxOccupied);
+}
+
+/**
+ * Builds the full Console Strip list (`CH 1..40`, `AUX 1..8`) optionally including vacant strips.
+ */
+export function buildConsoleStripRows(
+  node: HardwareNode,
+  options: { includeVacant: boolean },
+): InspectorStripRow[] {
+  const strips = node.channelStrips ?? [];
+  const byKey = new Map<string, ConsoleChannelStrip>();
+  for (const s of strips) {
+    byKey.set(`${s.kind}:${s.index}`, s);
+  }
+
+  const rows: InspectorStripRow[] = [];
+
+  if (!options.includeVacant) {
+    for (const strip of strips) {
+      rows.push({
+        key: strip.id,
+        kind: strip.kind,
+        index: strip.index,
+        isVacant: false,
+        strip,
+        source: findStripSourceChannel(node, strip),
+      });
+    }
+    return rows;
+  }
+
+  const chCap = Math.max(
+    WING_STRIP_CAPACITIES.ch,
+    ...strips.filter((s) => s.kind === 'ch').map((s) => s.index),
+  );
+  const auxCap = Math.max(
+    WING_STRIP_CAPACITIES.aux,
+    ...strips.filter((s) => s.kind === 'aux').map((s) => s.index),
+  );
+
+  for (let idx = 1; idx <= chCap; idx++) {
+    const strip = byKey.get(`ch:${idx}`);
+    rows.push(
+      strip
+        ? {
+            key: strip.id,
+            kind: 'ch',
+            index: idx,
+            isVacant: false,
+            strip,
+            source: findStripSourceChannel(node, strip),
+          }
+        : {
+            key: `${node.id}:strip:ch:vacant:${idx}`,
+            kind: 'ch',
+            index: idx,
+            isVacant: true,
+            source: null,
+          },
+    );
+  }
+
+  for (let idx = 1; idx <= auxCap; idx++) {
+    const strip = byKey.get(`aux:${idx}`);
+    rows.push(
+      strip
+        ? {
+            key: strip.id,
+            kind: 'aux',
+            index: idx,
+            isVacant: false,
+            strip,
+            source: findStripSourceChannel(node, strip),
+          }
+        : {
+            key: `${node.id}:strip:aux:vacant:${idx}`,
+            kind: 'aux',
+            index: idx,
+            isVacant: true,
+            source: null,
+          },
+    );
+  }
+
+  return rows;
+}
+
+/**
+ * Builds the full Mix Bus list (`BUS 1..16`, `MTX 1..8`, `MAIN 1..4`, `MON 1..2`),
+ * optionally including vacant slots on WING consoles.
+ */
+export function buildConsoleBusRows(
+  node: HardwareNode,
+  options: { includeVacant: boolean },
+): InspectorBusRow[] {
+  const byKey = new Map<string, MixBusSummary>();
+  for (const b of node.mixBuses) {
+    byKey.set(`${b.kind}:${b.index}`, b);
+  }
+
+  if (!options.includeVacant || node.kind !== 'console') {
+    return node.mixBuses.map((bus) => ({
+      key: bus.id,
+      kind: bus.kind,
+      index: bus.index,
+      isVacant: false,
+      bus,
+    }));
+  }
+
+  const kinds: MixBusKind[] = ['bus', 'mtx', 'main', 'mon'];
+  const rows: InspectorBusRow[] = [];
+
+  for (const kind of kinds) {
+    const cap = Math.max(
+      WING_BUS_CAPACITIES[kind],
+      ...node.mixBuses.filter((b) => b.kind === kind).map((b) => b.index),
+    );
+    for (let idx = 1; idx <= cap; idx++) {
+      const bus = byKey.get(`${kind}:${idx}`);
+      rows.push(
+        bus
+          ? {
+              key: bus.id,
+              kind,
+              index: idx,
+              isVacant: false,
+              bus,
+            }
+          : {
+              key: `${node.id}:${kind}:vacant:${idx}`,
+              kind,
+              index: idx,
+              isVacant: true,
+            },
+      );
     }
   }
 
@@ -241,20 +517,39 @@ export function filterInspectorRows(
   const { facet, tracedChannelIds } = options;
   const q = options.query.trim().toLowerCase();
   const isPhantomQuery = q === '+48v' || q === '48v' || q === 'phantom';
+  const isVacantQuery = q === 'vacant' || q === 'unused' || q === 'open' || q === 'empty';
 
   return rows.filter((row) => {
-    if (facet === '48v' && !row.phantom48v) return false;
-    if (facet === 'passthrough' && !row.isPassthrough) return false;
-    if (facet === 'notes' && !row.hasAnnotation) return false;
-    if (facet === 'unpatched' && !row.isUnpatchedInput) return false;
-    if (facet === 'traced' && !row.channelIds.some((id) => tracedChannelIds.has(id))) {
-      return false;
+    if (facet === 'vacant') {
+      if (!row.isVacant) return false;
+    } else if (facet === '48v') {
+      if (!row.phantom48v) return false;
+    } else if (facet === 'passthrough') {
+      if (!row.isPassthrough) return false;
+    } else if (facet === 'notes') {
+      if (!row.hasAnnotation) return false;
+    } else if (facet === 'unpatched') {
+      if (!row.isUnpatchedInput) return false;
+    } else if (facet === 'traced') {
+      if (!row.channelIds.some((id) => tracedChannelIds.has(id))) return false;
     }
 
     if (!q) return true;
+
+    if (row.isVacant) {
+      return (
+        isVacantQuery ||
+        'vacant'.includes(q) ||
+        'unused'.includes(q) ||
+        'open'.includes(q) ||
+        String(row.slot) === q ||
+        row.slotLabel.includes(q)
+      );
+    }
+
     if (isPhantomQuery && row.phantom48v) return true;
 
-    const p = row.primary;
+    const p = row.primary!;
     const partner = row.partner;
     const pAnn = rig.annotations.channels[p.id];
     const partnerAnn = partner ? rig.annotations.channels[partner.id] : undefined;
@@ -418,7 +713,6 @@ export function groupNodesByZone(
 export function compactNodeTabLabel(name: string): string {
   const trimmed = name.trim();
   if (trimmed.length <= 16) return trimmed;
-  // Drop parenthetical suffix first if present
   const noParen = trimmed.replace(/\s*\([^)]*\)\s*$/, '').trim();
   if (noParen.length <= 18) return noParen;
   return `${noParen.slice(0, 16).trimEnd()}…`;
