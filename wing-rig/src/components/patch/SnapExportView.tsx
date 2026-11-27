@@ -106,7 +106,7 @@ export function SnapExportView({
   return (
     <div className="space-y-4">
       {/* Lossless Guarantee Banner */}
-      <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/70 dark:bg-emerald-950/30 px-4 py-3 text-xs text-emerald-900 dark:text-emerald-200">
+      <div className="flex items-start gap-2.5 rounded-[2px] border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/70 dark:bg-emerald-950/30 px-4 py-3 text-xs text-emerald-900 dark:text-emerald-200">
         <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
         <div>
           <strong>Lossless Patch-Overlay Export:</strong> Only the staged{' '}
@@ -118,7 +118,7 @@ export function SnapExportView({
 
       {/* Guardrail confirmation bar if +48V changed or Verifier Errors exist */}
       {requiresConfirmation && (
-        <div className="rounded-xl border border-amber-300 dark:border-amber-700/80 bg-amber-50 dark:bg-amber-950/40 p-4 space-y-2">
+        <div className="rounded-[2px] border border-amber-300 dark:border-amber-700/80 bg-amber-50 dark:bg-amber-950/40 p-4 space-y-2">
           <div className="flex items-center gap-2 text-xs font-bold text-amber-900 dark:text-amber-200">
             <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
             Pre-Export Safety Check Required
@@ -159,7 +159,7 @@ export function SnapExportView({
           return (
             <div
               key={consoleNode.id}
-              className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 flex flex-col justify-between gap-4"
+              className="rounded-[2px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 flex flex-col justify-between gap-4"
             >
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
@@ -167,7 +167,7 @@ export function SnapExportView({
                     <div className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                       {consoleNode.zone} · {consoleNode.model}
                     </div>
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                    <h3 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
                       {resolveNodeName(rig, consoleNode)}
                     </h3>
                     {meta ? (
@@ -181,27 +181,27 @@ export function SnapExportView({
                       </div>
                     )}
                   </div>
-                  <span className="shrink-0 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-0.5 font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  <span className="shrink-0 rounded-[1px] border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-0.5 font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
                     {consolePatches.length} staged
                   </span>
                 </div>
 
                 {!meta ? (
-                  <div className="rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-4 text-center space-y-2">
+                  <div className="rounded-[2px] border border-dashed border-slate-300 dark:border-slate-700 p-4 text-center space-y-2">
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       Upload this console&apos;s `.snap` file to enable lossless editing &amp; export.
                     </p>
                     <button
                       type="button"
                       onClick={() => onOpenSnapImport(consoleNode.id)}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 dark:bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-400 cursor-pointer"
+                      className="inline-flex items-center gap-1.5 rounded-[2px] bg-sky-600 dark:bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-400 cursor-pointer"
                     >
                       <FileUp className="w-3.5 h-3.5" />
                       Import Baseline .snap
                     </button>
                   </div>
                 ) : consolePatches.length === 0 ? (
-                  <div className="rounded-lg bg-slate-50 dark:bg-slate-800/40 px-3 py-4 text-center text-xs text-slate-500 dark:text-slate-400">
+                  <div className="rounded-[2px] bg-slate-50 dark:bg-slate-800/40 px-3 py-4 text-center text-xs text-slate-500 dark:text-slate-400">
                     No pending edits staged for this console. Baseline matches exported state.
                   </div>
                 ) : (
@@ -209,7 +209,7 @@ export function SnapExportView({
                     {consolePatches.map((entry) => (
                       <div
                         key={entry.id}
-                        className="flex items-start justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 px-2.5 py-2 text-xs"
+                        className="flex items-start justify-between gap-2 rounded-[2px] border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 px-2.5 py-2 text-xs"
                       >
                         <div className="min-w-0">
                           <div className="font-semibold text-slate-900 dark:text-slate-100">
@@ -223,7 +223,7 @@ export function SnapExportView({
                           type="button"
                           title="Remove this staged patch"
                           onClick={() => onRemoveStagedPatch(entry.id)}
-                          className="rounded p-1 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
+                          className="rounded-[1px] p-1 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
@@ -245,7 +245,7 @@ export function SnapExportView({
                       onChange={(e) =>
                         setFileNames((prev) => ({ ...prev, [consoleNode.id]: e.target.value }))
                       }
-                      className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
+                      className="w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                     />
                   </div>
 
@@ -254,7 +254,7 @@ export function SnapExportView({
                       type="button"
                       disabled={!exportAllowed}
                       onClick={() => handleExportOne(consoleNode.id)}
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 dark:bg-sky-500 px-3 py-2 text-xs font-semibold text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-sky-400 disabled:opacity-40 cursor-pointer"
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-[2px] bg-slate-900 dark:bg-sky-500 px-3 py-2 text-xs font-semibold text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-sky-400 disabled:opacity-40 cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
                       Download .snap
@@ -265,7 +265,7 @@ export function SnapExportView({
                           type="button"
                           title="Make these patched changes the new committed baseline in IndexedDB"
                           onClick={() => handleCommitOne(consoleNode.id)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-2 text-xs font-semibold text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-950 cursor-pointer"
+                          className="inline-flex items-center gap-1 rounded-[2px] border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-2 text-xs font-semibold text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-950 cursor-pointer"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
                           Commit Baseline
@@ -274,7 +274,7 @@ export function SnapExportView({
                           type="button"
                           title="Discard staged patches for this console"
                           onClick={() => onDiscardStagedPatches(consoleNode.id)}
-                          className="rounded-lg border border-slate-300 dark:border-slate-700 p-2 text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                          className="rounded-[2px] border border-slate-300 dark:border-slate-700 p-2 text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -289,7 +289,7 @@ export function SnapExportView({
       </div>
 
       {/* Bottom Batch Bar */}
-      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="rounded-[2px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 flex flex-wrap items-center justify-between gap-3">
         <div className="text-xs">
           <div className="font-bold text-slate-900 dark:text-slate-100">
             Batch Export Modified Consoles ({modifiedConsoleIds.length})
@@ -308,7 +308,7 @@ export function SnapExportView({
                 onDiscardStagedPatches();
                 setStatusMessage('All staged patches discarded — restored to committed baselines.');
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               Discard All ({stagedPatches.length})
@@ -318,7 +318,7 @@ export function SnapExportView({
             type="button"
             disabled={!exportAllowed || modifiedConsoleIds.length === 0}
             onClick={handleExportAllModified}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 dark:bg-sky-500 px-4 py-2 text-xs font-semibold text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-400 disabled:opacity-40 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-[2px] bg-sky-600 dark:bg-sky-500 px-4 py-2 text-xs font-semibold text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-400 disabled:opacity-40 cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
             Export All Modified .snap ({modifiedConsoleIds.length})

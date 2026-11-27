@@ -98,10 +98,13 @@ export function TopBar({
   };
 
   return (
-    <header className="no-print relative z-30 flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-2.5 shadow-2xs">
+    <header className="no-print relative z-30 flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-300 dark:border-slate-800 bg-white dark:bg-[#111827] px-4 py-2.5 shadow-2xs">
       {/* Left: Brand & Rig Name */}
       <div className="flex items-center gap-2.5 min-w-0">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-900 dark:bg-sky-500/15 dark:border dark:border-sky-400/30 text-sky-400 font-mono text-sm font-bold tracking-tight">
+        <div
+          style={{ clipPath: 'polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%)' }}
+          className="flex h-8 w-8 shrink-0 items-center justify-center bg-slate-900 dark:bg-sky-500 text-sky-400 dark:text-slate-950 font-mono text-sm font-bold tracking-tight"
+        >
           W
         </div>
         <div className="min-w-0">
@@ -112,14 +115,14 @@ export function TopBar({
                 aria-label="Rig name"
                 value={rig.name}
                 onChange={(e) => onUpdateRigName(e.target.value)}
-                className="w-48 sm:w-56 rounded border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-1.5 py-0.5 text-sm font-bold text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none"
+                className="w-48 sm:w-56 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0b111d] px-1.5 py-0.5 font-display text-base font-bold text-slate-900 dark:text-slate-100 focus:border-sky-600 focus:bg-white dark:focus:bg-[#090d14] focus:outline-none"
               />
             ) : (
-              <h1 className="truncate text-sm font-bold tracking-tight text-slate-900 dark:text-slate-100">
+              <h1 className="font-display truncate text-base font-bold tracking-tight text-slate-900 dark:text-slate-100">
                 {rig.name}
               </h1>
             )}
-            <span className="hidden lg:inline-flex items-center rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-600 dark:text-slate-400">
+            <span className="hidden lg:inline-flex items-center rounded-[1px] border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-[#0b111d] px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
               WING Rig Visualizer
             </span>
           </div>
@@ -129,7 +132,7 @@ export function TopBar({
       {/* Center: Global Search-and-Trace */}
       {view === 'canvas' && (
         <div className="relative flex-1 max-w-md min-w-[200px]">
-          <Search className="pointer-events-none absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
+          <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
           <input
             ref={searchInputRef}
             type="text"
@@ -138,7 +141,7 @@ export function TopBar({
             onBlur={() => setTimeout(() => setSearchFocused(false), 160)}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search & trace any channel, bus, +48V, cable tag... (/)"
-            className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 pl-8 pr-8 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-sky-500/15 focus:outline-none"
+            className="w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-[#f3f5f8] dark:bg-[#0b111d] pl-8 pr-8 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-600 focus:bg-white dark:focus:bg-[#090d14] focus:ring-1 focus:ring-sky-500/25 focus:outline-none"
           />
           {query && (
             <button
@@ -151,13 +154,13 @@ export function TopBar({
           )}
 
           {searchFocused && query.trim().length > 0 && (
-            <div className="absolute left-0 right-0 top-full mt-1.5 max-h-80 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg">
+            <div className="absolute left-0 right-0 top-full mt-1 max-h-80 overflow-y-auto rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] shadow-lg">
               {hits.length === 0 ? (
                 <div className="px-3.5 py-4 text-center text-xs text-slate-500 dark:text-slate-400">
                   No matches for &ldquo;{query}&rdquo;
                 </div>
               ) : (
-                <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                <ul className="divide-y divide-slate-200 dark:divide-slate-800">
                   {hits.map((hit) => (
                     <li key={hit.id}>
                       <button
@@ -176,7 +179,7 @@ export function TopBar({
                               {hit.label}
                             </span>
                             {hit.badge && (
-                              <span className="rounded bg-slate-100 dark:bg-slate-800 px-1 py-0 font-mono text-[9.5px] font-semibold text-slate-600 dark:text-slate-300">
+                              <span className="rounded-[1px] border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-1 py-0 font-mono text-[9.5px] font-semibold text-slate-600 dark:text-slate-300">
                                 {hit.badge}
                               </span>
                             )}
@@ -185,7 +188,7 @@ export function TopBar({
                             {hit.sublabel}
                           </div>
                         </div>
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded bg-sky-50 dark:bg-sky-950/80 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:text-sky-300">
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-[1px] border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/80 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-sky-700 dark:text-sky-300">
                           <GitBranch className="w-3 h-3" />
                           Trace
                         </span>
@@ -211,10 +214,10 @@ export function TopBar({
                   ? 'Editing unlocked — click to return to safe Read-Only mode'
                   : 'Read-Only Mode (volunteer-safe) — click to unlock layout & label editing'
               }
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 rounded-[2px] border px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
                 editMode
-                  ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:border-amber-600/60 dark:bg-amber-950/70 dark:text-amber-200 dark:hover:bg-amber-950'
-                  : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                  ? 'border-amber-400 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:border-amber-600/70 dark:bg-amber-950/70 dark:text-amber-200 dark:hover:bg-amber-950'
+                  : 'border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               {editMode ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
@@ -225,7 +228,7 @@ export function TopBar({
               <button
                 type="button"
                 onClick={onOpenAddGear}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
+                className="inline-flex items-center gap-1 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Add Gear</span>
@@ -235,7 +238,7 @@ export function TopBar({
             <button
               type="button"
               onClick={onOpenSnapImport}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-400 dark:text-slate-950 shadow-2xs cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-[2px] bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-400 dark:text-slate-950 cursor-pointer"
             >
               <FileUp className="w-3.5 h-3.5" />
               <span>Import .snap</span>
@@ -252,16 +255,16 @@ export function TopBar({
               type="button"
               title="Import portable .rig.json"
               onClick={() => rigFileInputRef.current?.click()}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
+              className="inline-flex items-center gap-1 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/80 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5" />
-              <span className="hidden xl:inline">.rig.json</span>
+              <span className="hidden xl:inline font-mono text-[11px]">.rig.json</span>
             </button>
             <button
               type="button"
               title="Export portable .rig.json"
               onClick={onExportRigJson}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
+              className="inline-flex items-center gap-1 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/80 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span className="hidden xl:inline">Export</span>
@@ -273,18 +276,18 @@ export function TopBar({
           type="button"
           onClick={() => onToggleView(view === 'patch' ? 'canvas' : 'patch')}
           title="Open WING Patch Studio to edit sources, splits, mix buses, verify paths, and export .snap files"
-          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+          className={`inline-flex items-center gap-1.5 rounded-[2px] border px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
             view === 'patch'
               ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800 dark:border-sky-400 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400'
               : stagedCount > 0
-                ? 'border-sky-400 bg-sky-50 text-sky-900 hover:bg-sky-100 dark:border-sky-600 dark:bg-sky-950/60 dark:text-sky-200 dark:hover:bg-sky-950'
-                : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700'
+                ? 'border-sky-500 bg-sky-50 text-sky-900 hover:bg-sky-100 dark:border-sky-600 dark:bg-sky-950/60 dark:text-sky-200 dark:hover:bg-sky-950'
+                : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100 dark:hover:bg-slate-700'
           }`}
         >
           <Wrench className="w-3.5 h-3.5" />
           <span>{view === 'patch' ? 'Schematic' : 'Patch Studio'}</span>
           {stagedCount > 0 && (
-            <span className="rounded-full bg-sky-600 dark:bg-sky-400 px-1.5 py-0 font-mono text-[10px] font-bold text-white dark:text-slate-950">
+            <span className="rounded-[1px] bg-sky-600 dark:bg-sky-400 px-1.5 py-0 font-mono text-[10px] font-bold text-white dark:text-slate-950">
               {stagedCount}
             </span>
           )}
@@ -299,10 +302,10 @@ export function TopBar({
         <button
           type="button"
           onClick={() => onToggleView(view === 'print' ? 'canvas' : 'print')}
-          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+          className={`inline-flex items-center gap-1.5 rounded-[2px] border px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
             view === 'print'
               ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800 dark:border-sky-400 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400'
-              : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700'
+              : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100 dark:hover:bg-slate-700'
           }`}
         >
           <Printer className="w-3.5 h-3.5" />
@@ -319,10 +322,10 @@ export function TopBar({
                 ? 'Show Rig Inspector panel'
                 : 'Collapse Rig Inspector for full-screen topology view'
             }
-            className={`inline-flex items-center justify-center rounded-lg border p-1.5 transition-colors cursor-pointer ${
+            className={`inline-flex items-center justify-center rounded-[2px] border p-1.5 transition-colors cursor-pointer ${
               inspectorCollapsed
-                ? 'border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-950/60 dark:text-sky-300 dark:hover:bg-sky-950'
-                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
+                ? 'border-sky-500 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-950/60 dark:text-sky-300 dark:hover:bg-sky-950'
+                : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
             }`}
           >
             {inspectorCollapsed ? (
@@ -338,14 +341,14 @@ export function TopBar({
           onClick={onToggleTheme}
           aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
           title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          className="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-1.5 text-slate-700 dark:text-amber-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+          className="inline-flex items-center justify-center rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/80 p-1.5 text-slate-700 dark:text-amber-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer"
         >
           {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
         </button>
       </div>
 
       {importError && (
-        <div className="w-full rounded-lg border border-rose-200 dark:border-rose-800/80 bg-rose-50 dark:bg-rose-950/60 px-3 py-1.5 text-xs text-rose-800 dark:text-rose-200 flex items-center justify-between">
+        <div className="w-full rounded-[2px] border border-rose-300 dark:border-rose-800/80 bg-rose-50 dark:bg-rose-950/60 px-3 py-1.5 text-xs text-rose-800 dark:text-rose-200 flex items-center justify-between">
           <span>Could not import .rig.json: {importError}</span>
           <button
             type="button"

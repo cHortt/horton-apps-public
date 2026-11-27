@@ -24,18 +24,18 @@ export function TraceBanner({
   onSelectTrunk,
 }: TraceBannerProps) {
   return (
-    <div className="pointer-events-auto absolute top-3 left-3 right-3 z-20 rounded-xl border border-sky-300 dark:border-sky-700/80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm shadow-md px-3.5 py-2.5">
+    <div className="pointer-events-auto absolute top-3 left-3 right-3 z-20 rounded-[2px] border border-sky-600 dark:border-sky-500/80 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-sm shadow-sm px-3.5 py-2.5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-sky-600 dark:bg-sky-500 text-white dark:text-slate-950">
+          <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[1px] bg-sky-600 dark:bg-sky-500 text-white dark:text-slate-950">
             <GitBranch className="w-3.5 h-3.5" />
           </span>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-400">
+              <span className="font-mono text-[10.5px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-400">
                 Signal Trace
               </span>
-              <span className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+              <span className="font-display truncate text-sm font-bold text-slate-900 dark:text-slate-100">
                 {trace.title}
               </span>
               <span className="hidden sm:inline text-xs font-mono text-slate-500 dark:text-slate-400">
@@ -48,10 +48,10 @@ export function TraceBanner({
         <button
           type="button"
           onClick={onClear}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
         >
           <span>Clear</span>
-          <kbd className="rounded bg-white dark:bg-slate-900 px-1 py-0.5 font-mono text-[10px] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+          <kbd className="rounded-[1px] bg-white dark:bg-slate-900 px-1 py-0.5 font-mono text-[10px] text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-700">
             Esc
           </kbd>
           <X className="w-3.5 h-3.5" />
@@ -69,9 +69,9 @@ export function TraceBanner({
                   if (step.trunkId) onSelectTrunk(step.trunkId);
                   else onSelectNode(step.nodeId);
                 }}
-                className={`rounded-md border px-2 py-1 text-left transition-colors hover:brightness-95 dark:hover:brightness-110 cursor-pointer ${STEP_STYLE[step.kind]}`}
+                className={`rounded-[1px] border px-2 py-1 text-left transition-colors hover:brightness-95 dark:hover:brightness-110 cursor-pointer ${STEP_STYLE[step.kind]}`}
               >
-                <div className="text-[10px] font-semibold uppercase tracking-wide opacity-75">
+                <div className="font-display text-[10px] font-bold uppercase tracking-wider opacity-80">
                   {step.nodeLabel}
                 </div>
                 <div className="text-[11px] font-mono leading-tight">{step.detail}</div>

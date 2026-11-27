@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createMockRig } from './mockRig';
 import {
+  buildNodeTopologySummary,
   resolveBusName,
   resolveChannelName,
   resolveNodeName,
@@ -114,5 +115,33 @@ describe('RigDocument schema & helpers', () => {
 
     const cableHits = searchRig(rig, 'CAT6-FOH-TRUNK');
     expect(cableHits.some((h) => h.kind === 'trunk' && h.trunkId === 'trunk-aes50-c')).toBe(true);
+  });
+
+  it('builds role-adaptive topology summaries for hubs, sources, and destinations', () => {
+    const rig = createMockRig();
+
+    const stageWing = rig.nodes.find((n) => n.id === 'stage-wing')!;
+    const hubSummary = buildNodeTopologySummary(rig, stageWing);
+    expect(hubSummary.role).toBe('hub');
+    expect(hubSummary.statusText).toBe('48kHz MASTER');
+    expect(hubSummary.sheetRef).toBe('§2–3');
+    expect(hubSummary.rows.map((r) => r.left)).toEqual(['AES50-A', 'LOCAL', 'AES50-C']);
+    expect(hubSummary.rows[0].right).toContain('32 in');
+    expect(hubSummary.rows[0].right).toContain('16 out');
+
+    const dl32 = rig.nodes.find((n) => n.id === 'dl32-stage')!;
+    const sourceSummary = buildNodeTopologySummary(rig, dl32);
+    expect(sourceSummary.role).toBe('source');
+    expect(sourceSummary.sheetRef).toBe('§1');
+    expect(sourceSummary.rows.some((r) => r.left === 'CH 1–24')).toBe(true);
+    expect(sourceSummary.rows.some((r) => r.left === 'CH 25–32' && r.right.includes('Talkbacks'))).toBe(true);
+
+    const iemRack = rig.nodes.find((n) => n.id === 'iem-rack')!;
+    const destSummary = buildNodeTopologySummary(rig, iemRack);
+    expect(destSummary.role).toBe('dest');
+    expect(destSummary.statusText).toBe('4× STEREO');
+    expect(destSummary.sheetRef).toBe('§4');
+    expect(destSummary.rows).toHaveLength(4);
+    expect(destSummary.rows[0]).toMatchObject({ left: 'LCL 1–2', right: 'IEM 1 (ST)' });
   });
 });

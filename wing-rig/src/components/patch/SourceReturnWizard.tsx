@@ -416,11 +416,11 @@ export function SourceReturnWizard({
     <div className="space-y-4">
       {/* Direction Mode Switcher */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="inline-flex rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1">
+        <div className="inline-flex rounded-[2px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-1">
           <button
             type="button"
             onClick={() => setWizardMode('forward')}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+            className={`inline-flex items-center gap-1.5 rounded-[2px] px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
               wizardMode === 'forward'
                 ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
                 : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
@@ -432,7 +432,7 @@ export function SourceReturnWizard({
           <button
             type="button"
             onClick={() => setWizardMode('return')}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+            className={`inline-flex items-center gap-1.5 rounded-[2px] px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
               wizardMode === 'return'
                 ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950'
                 : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
@@ -447,7 +447,7 @@ export function SourceReturnWizard({
           <button
             type="button"
             onClick={onUnlockPatching}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/60 px-3 py-1.5 text-xs font-semibold text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-950 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-[2px] border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/60 px-3 py-1.5 text-xs font-semibold text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-950 cursor-pointer"
           >
             <Lock className="w-3.5 h-3.5" />
             Unlock Patch Staging to Stage Edits
@@ -458,17 +458,17 @@ export function SourceReturnWizard({
       {wizardMode === 'forward' ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Left Form */}
-          <div className="lg:col-span-7 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-4">
+          <div className="lg:col-span-7 rounded-[2px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
               <div>
-                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                <h2 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100">
                   Add / Reconfigure Source Across Consoles
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   Atomically writes preamp input, Stage strip, AES50 split pass-through, and FOH receive strip.
                 </p>
               </div>
-              <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-0.5 font-mono text-[10.5px] text-slate-600 dark:text-slate-300">
+              <span className="inline-flex items-center gap-1 rounded-[1px] border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-0.5 font-mono text-[10.5px] text-slate-600 dark:text-slate-300">
                 <Lock className="w-3 h-3 text-sky-600 dark:text-sky-400" />
                 Headamp Owner:{' '}
                 {stageNode && linkConfig.headampOwnerConsoleId === stageNode.id
@@ -481,7 +481,7 @@ export function SourceReturnWizard({
 
             {/* Baseline availability notice */}
             {(!hasStageBaseline || (fohNode && !hasFohBaseline)) && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 dark:border-sky-800/80 bg-sky-50/70 dark:bg-sky-950/40 px-3 py-2 text-xs text-sky-900 dark:text-sky-200">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-[2px] border border-sky-200 dark:border-sky-800/80 bg-sky-50/70 dark:bg-sky-950/40 px-3 py-2 text-xs text-sky-900 dark:text-sky-200">
                 <span>
                   {!hasStageBaseline && !hasFohBaseline
                     ? 'Import at least one console .snap baseline to stage lossless patches.'
@@ -494,7 +494,7 @@ export function SourceReturnWizard({
                   onClick={() =>
                     onOpenSnapImport(!hasStageBaseline ? stageNode?.id : fohNode?.id)
                   }
-                  className="inline-flex items-center gap-1 rounded-md bg-sky-600 dark:bg-sky-500 px-2.5 py-1 text-[11px] font-semibold text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-400 cursor-pointer"
+                  className="inline-flex items-center gap-1 rounded-[1px] bg-sky-600 dark:bg-sky-500 px-2.5 py-1 text-[11px] font-semibold text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-400 cursor-pointer"
                 >
                   <FileUp className="w-3 h-3" />
                   Import .snap
@@ -513,7 +513,7 @@ export function SourceReturnWizard({
                   value={sourceName}
                   onChange={(e) => setSourceName(e.target.value)}
                   placeholder="e.g. Acoustic Gtr 2"
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
+                  className="w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                 />
               </div>
               <div className="sm:col-span-4">
@@ -523,7 +523,7 @@ export function SourceReturnWizard({
                 <select
                   value={inputGroup}
                   onChange={(e) => setInputGroup(e.target.value as PortGroupCode)}
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
+                  className="w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                 >
                   {INPUT_BANKS.map((b) => (
                     <option key={b.code} value={b.code}>
@@ -542,13 +542,13 @@ export function SourceReturnWizard({
                   max={64}
                   value={inputSlot}
                   onChange={(e) => setInputSlot(Math.max(1, Number(e.target.value) || 1))}
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
+                  className="w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                 />
               </div>
             </div>
 
             {/* Format, Gain, +48V, Color & Tags */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-[2px] border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3">
               <div>
                 <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
                   Channel Format
@@ -557,10 +557,10 @@ export function SourceReturnWizard({
                   <button
                     type="button"
                     onClick={() => setMode('M')}
-                    className={`flex-1 rounded-md border py-1 font-mono text-xs font-semibold cursor-pointer ${
+                    className={`flex-1 rounded-[1px] border py-1 font-mono text-xs font-semibold cursor-pointer ${
                       mode === 'M'
                         ? 'border-slate-900 bg-slate-900 text-white dark:border-sky-500 dark:bg-sky-500 dark:text-slate-950'
-                        : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300'
+                        : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] text-slate-600 dark:text-slate-300'
                     }`}
                   >
                     Mono (M)
@@ -568,10 +568,10 @@ export function SourceReturnWizard({
                   <button
                     type="button"
                     onClick={() => setMode('ST')}
-                    className={`flex-1 rounded-md border py-1 font-mono text-xs font-semibold cursor-pointer ${
+                    className={`flex-1 rounded-[1px] border py-1 font-mono text-xs font-semibold cursor-pointer ${
                       mode === 'ST'
                         ? 'border-slate-900 bg-slate-900 text-white dark:border-sky-500 dark:bg-sky-500 dark:text-slate-950'
-                        : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300'
+                        : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] text-slate-600 dark:text-slate-300'
                     }`}
                   >
                     Stereo (ST)
@@ -630,7 +630,7 @@ export function SourceReturnWizard({
                       title={`${c.index}: ${c.name}`}
                       onClick={() => setColorIndex(c.index)}
                       style={{ backgroundColor: c.hex }}
-                      className={`h-5 w-5 rounded-md cursor-pointer transition-transform ${
+                      className={`h-5 w-5 rounded-[1px] cursor-pointer transition-transform ${
                         colorIndex === c.index
                           ? 'ring-2 ring-offset-2 ring-slate-900 dark:ring-white dark:ring-offset-slate-900 scale-110'
                           : 'opacity-80 hover:opacity-100'
@@ -648,7 +648,7 @@ export function SourceReturnWizard({
                   value={tags}
                   onChange={(e) => setTags(e.target.value)}
                   placeholder="#BAND,#VOX"
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
+                  className="w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -656,7 +656,7 @@ export function SourceReturnWizard({
             {/* 3-Column Console Routing Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {/* Stage Strip */}
-              <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-2.5">
+              <div className="rounded-[2px] border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
                     1. Stage Strip
@@ -669,7 +669,7 @@ export function SourceReturnWizard({
                   <select
                     value={stageStripKind}
                     onChange={(e) => setStageStripKind(e.target.value as 'ch' | 'aux')}
-                    className="rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-1 font-mono text-xs text-slate-900 dark:text-slate-100"
+                    className="rounded-[1px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] px-1.5 py-1 font-mono text-xs text-slate-900 dark:text-slate-100"
                   >
                     <option value="ch">CH</option>
                     <option value="aux">AUX</option>
@@ -681,7 +681,7 @@ export function SourceReturnWizard({
                     value={stageStripIndex}
                     onChange={(e) => setStageStripIndex(Math.max(0, Number(e.target.value) || 0))}
                     title="0 = do not patch a Stage channel strip"
-                    className="rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 font-mono text-xs text-slate-900 dark:text-slate-100"
+                    className="rounded-[1px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] px-2 py-1 font-mono text-xs text-slate-900 dark:text-slate-100"
                   />
                 </div>
                 <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300 cursor-pointer">
@@ -698,7 +698,7 @@ export function SourceReturnWizard({
                     value={stageStripOverrideName}
                     onChange={(e) => setStageStripOverrideName(e.target.value)}
                     placeholder="Stage strip override name"
-                    className="w-full rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-xs text-slate-900 dark:text-slate-100"
+                    className="w-full rounded-[1px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] px-2 py-1 text-xs text-slate-900 dark:text-slate-100"
                   />
                 )}
                 <div>
@@ -711,10 +711,10 @@ export function SourceReturnWizard({
                         key={b}
                         type="button"
                         onClick={() => toggleNumber(stageBusSends, b, setStageBusSends)}
-                        className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold cursor-pointer ${
+                        className={`rounded-[1px] px-1.5 py-0.5 font-mono text-[10px] font-semibold cursor-pointer ${
                           stageBusSends.includes(b)
                             ? 'bg-sky-600 dark:bg-sky-500 text-white dark:text-slate-950'
-                            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
+                            : 'bg-white dark:bg-[#111827] text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
                         }`}
                       >
                         B{b}
@@ -733,7 +733,7 @@ export function SourceReturnWizard({
               </div>
 
               {/* Inter-Console Split */}
-              <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-2.5">
+              <div className="rounded-[2px] border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-2.5">
                 <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
                   2. {linkConfig.stageSplitPort} → {linkConfig.fohReceivePort} Split
                 </div>
@@ -758,7 +758,7 @@ export function SourceReturnWizard({
                         max={48}
                         value={splitSlot}
                         onChange={(e) => setSplitSlot(Math.max(1, Number(e.target.value) || 1))}
-                        className="w-full rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 font-mono text-xs text-slate-900 dark:text-slate-100"
+                        className="w-full rounded-[1px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] px-2 py-1 font-mono text-xs text-slate-900 dark:text-slate-100"
                       />
                     </div>
                     <button
@@ -773,7 +773,7 @@ export function SourceReturnWizard({
               </div>
 
               {/* FOH Strip */}
-              <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-2.5">
+              <div className="rounded-[2px] border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
                     3. FOH Strip
@@ -788,7 +788,7 @@ export function SourceReturnWizard({
                       <select
                         value={fohStripKind}
                         onChange={(e) => setFohStripKind(e.target.value as 'ch' | 'aux')}
-                        className="rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-1 font-mono text-xs text-slate-900 dark:text-slate-100"
+                        className="rounded-[1px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] px-1.5 py-1 font-mono text-xs text-slate-900 dark:text-slate-100"
                       >
                         <option value="ch">CH</option>
                         <option value="aux">AUX</option>
@@ -799,7 +799,7 @@ export function SourceReturnWizard({
                         max={fohStripKind === 'ch' ? 40 : 8}
                         value={fohStripIndex}
                         onChange={(e) => setFohStripIndex(Math.max(0, Number(e.target.value) || 0))}
-                        className="rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 font-mono text-xs text-slate-900 dark:text-slate-100"
+                        className="rounded-[1px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] px-2 py-1 font-mono text-xs text-slate-900 dark:text-slate-100"
                       />
                     </div>
                     <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300 cursor-pointer">
@@ -816,7 +816,7 @@ export function SourceReturnWizard({
                         value={fohStripOverrideName}
                         onChange={(e) => setFohStripOverrideName(e.target.value)}
                         placeholder="FOH strip override name"
-                        className="w-full rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-xs text-slate-900 dark:text-slate-100"
+                        className="w-full rounded-[1px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] px-2 py-1 text-xs text-slate-900 dark:text-slate-100"
                       />
                     )}
                     <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300 cursor-pointer">
@@ -828,7 +828,7 @@ export function SourceReturnWizard({
                       Route to FOH Main L/R
                     </label>
                     {stageOwnsHeadamp && (
-                      <div className="rounded bg-slate-200/70 dark:bg-slate-900/70 px-2 py-1 text-[10px] font-mono text-slate-600 dark:text-slate-400">
+                      <div className="rounded-[1px] bg-slate-200/70 dark:bg-[#111827]/70 px-2 py-1 text-[10px] font-mono text-slate-600 dark:text-slate-400">
                         Gain/+48V locked (Trim only)
                       </div>
                     )}
@@ -843,7 +843,7 @@ export function SourceReturnWizard({
 
             {/* Guardrails Banner */}
             {forwardGuardrails.length > 0 ? (
-              <div className="rounded-lg border border-amber-300 dark:border-amber-700/80 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 space-y-1">
+              <div className="rounded-[2px] border border-amber-300 dark:border-amber-700/80 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 space-y-1">
                 {forwardGuardrails.map((g, i) => (
                   <div
                     key={i}
@@ -863,7 +863,7 @@ export function SourceReturnWizard({
                 ))}
               </div>
             ) : (
-              <div className="flex items-center gap-2 rounded-lg border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/70 dark:bg-emerald-950/40 px-3 py-2 text-xs text-emerald-900 dark:text-emerald-200">
+              <div className="flex items-center gap-2 rounded-[2px] border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/70 dark:bg-emerald-950/40 px-3 py-2 text-xs text-emerald-900 dark:text-emerald-200">
                 <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
                 <span>No slot collisions detected across Stage, split trunk, or FOH.</span>
               </div>
@@ -877,7 +877,7 @@ export function SourceReturnWizard({
                 type="button"
                 disabled={!canStageForward}
                 onClick={handleStageForward}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 dark:bg-sky-500 px-4 py-2 text-xs font-semibold text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-400 disabled:opacity-40 cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-[2px] bg-sky-600 dark:bg-sky-500 px-4 py-2 text-xs font-semibold text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-400 disabled:opacity-40 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Stage Source Patch
@@ -886,10 +886,10 @@ export function SourceReturnWizard({
           </div>
 
           {/* Right Live Path Preview */}
-          <div className="lg:col-span-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 flex flex-col justify-between gap-4">
+          <div className="lg:col-span-5 rounded-[2px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 flex flex-col justify-between gap-4">
             <div className="space-y-3">
               <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                <h3 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100">
                   Live End-to-End Signal Preview
                 </h3>
                 <span className="font-mono text-[10.5px] font-semibold text-sky-700 dark:text-sky-400">
@@ -898,7 +898,7 @@ export function SourceReturnWizard({
               </div>
 
               <div className="space-y-2">
-                <div className="rounded-lg border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/60 dark:bg-emerald-950/30 p-2.5 text-xs">
+                <div className="rounded-[2px] border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/60 dark:bg-emerald-950/30 p-2.5 text-xs">
                   <div className="font-mono text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400">
                     1 · Physical Source ({inputGroup}.{inputSlot}
                     {mode === 'ST' ? `–${getStereoPartnerSlot(inputSlot)}` : ''})
@@ -910,7 +910,7 @@ export function SourceReturnWizard({
                 </div>
 
                 {stageStripIndex > 0 && (
-                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-2.5 text-xs">
+                  <div className="rounded-[2px] border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-2.5 text-xs">
                     <div className="font-mono text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">
                       2 · {stageNode ? resolveNodeName(rig, stageNode) : 'Stage WING'}
                     </div>
@@ -922,7 +922,7 @@ export function SourceReturnWizard({
                 )}
 
                 {splitToFoh && (
-                  <div className="rounded-lg border border-amber-200 dark:border-amber-800/80 bg-amber-50/60 dark:bg-amber-950/30 p-2.5 text-xs">
+                  <div className="rounded-[2px] border border-amber-200 dark:border-amber-800/80 bg-amber-50/60 dark:bg-amber-950/30 p-2.5 text-xs">
                     <div className="font-mono text-[10px] font-bold uppercase text-amber-700 dark:text-amber-400">
                       3 · Direct Pass-Through Split
                     </div>
@@ -936,7 +936,7 @@ export function SourceReturnWizard({
                 )}
 
                 {fohNode && fohStripIndex > 0 && (
-                  <div className="rounded-lg border border-sky-200 dark:border-sky-800/80 bg-sky-50/60 dark:bg-sky-950/30 p-2.5 text-xs">
+                  <div className="rounded-[2px] border border-sky-200 dark:border-sky-800/80 bg-sky-50/60 dark:bg-sky-950/30 p-2.5 text-xs">
                     <div className="font-mono text-[10px] font-bold uppercase text-sky-700 dark:text-sky-400">
                       4 · {resolveNodeName(rig, fohNode)}
                     </div>
@@ -950,7 +950,7 @@ export function SourceReturnWizard({
               </div>
             </div>
 
-            <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 p-3">
+            <div className="rounded-[2px] border border-slate-200 dark:border-slate-800 bg-[#f3f5f8] dark:bg-[#090d14]/70 p-3">
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                 Verified .snap JSON Paths
               </div>
@@ -968,9 +968,9 @@ export function SourceReturnWizard({
       ) : (
         /* RETURN / BUS OUTPUT ROUTING WIZARD */
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          <div className="lg:col-span-7 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-4">
+          <div className="lg:col-span-7 rounded-[2px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 space-y-4">
             <div className="border-b border-slate-200 dark:border-slate-800 pb-3">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+              <h2 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100">
                 Configure Mix Bus / Main / Matrix / Monitor Output &amp; Return Relay
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -986,7 +986,7 @@ export function SourceReturnWizard({
                 <select
                   value={originConsoleId}
                   onChange={(e) => setOriginConsoleId(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                  className="w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100"
                 >
                   {consoles.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -1002,7 +1002,7 @@ export function SourceReturnWizard({
                 <select
                   value={busKind}
                   onChange={(e) => setBusKind(e.target.value as MixBusKind)}
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                  className="w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
                 >
                   <option value="bus">Mix Bus (BUS 1–16)</option>
                   <option value="main">Main (MAIN 1–4)</option>
@@ -1020,7 +1020,7 @@ export function SourceReturnWizard({
                   max={busKind === 'bus' ? 16 : busKind === 'mtx' ? 8 : busKind === 'main' ? 4 : 2}
                   value={busIndex}
                   onChange={(e) => setBusIndex(Math.max(1, Number(e.target.value) || 1))}
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                  className="w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
                 />
               </div>
             </div>
@@ -1036,7 +1036,7 @@ export function SourceReturnWizard({
                     value={monitorSourceRef}
                     onChange={(e) => setMonitorSourceRef(e.target.value)}
                     placeholder="e.g. BUS.7 or MAIN.1"
-                    className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                    className="w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
                   />
                 </div>
               ) : (
@@ -1049,7 +1049,7 @@ export function SourceReturnWizard({
                     value={busName}
                     onChange={(e) => setBusName(e.target.value)}
                     placeholder="e.g. Stage Sub Feed"
-                    className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                    className="w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100"
                   />
                 </div>
               )}
@@ -1082,7 +1082,7 @@ export function SourceReturnWizard({
                       title={`${c.index}: ${c.name}`}
                       onClick={() => setBusColorIndex(c.index)}
                       style={{ backgroundColor: c.hex }}
-                      className={`h-5 w-5 rounded-md cursor-pointer transition-transform ${
+                      className={`h-5 w-5 rounded-[1px] cursor-pointer transition-transform ${
                         busColorIndex === c.index
                           ? 'ring-2 ring-offset-2 ring-slate-900 dark:ring-white dark:ring-offset-slate-900 scale-110'
                           : 'opacity-80 hover:opacity-100'
@@ -1094,7 +1094,7 @@ export function SourceReturnWizard({
             )}
 
             {/* Origin Output Bank + Slot */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-[2px] border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3">
               <div>
                 <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
                   Origin Output Bank
@@ -1102,7 +1102,7 @@ export function SourceReturnWizard({
                 <select
                   value={originOutGroup}
                   onChange={(e) => setOriginOutGroup(e.target.value as PortGroupCode)}
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                  className="w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
                 >
                   {OUTPUT_BANKS.map((b) => (
                     <option key={b.code} value={b.code}>
@@ -1121,14 +1121,14 @@ export function SourceReturnWizard({
                   max={48}
                   value={originOutSlot}
                   onChange={(e) => setOriginOutSlot(Math.max(1, Number(e.target.value) || 1))}
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                  className="w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
                 />
               </div>
             </div>
 
             {/* Cross-Console Return Pass-Through */}
             {relayConsole && (
-              <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 space-y-2.5">
+              <div className="rounded-[2px] border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 space-y-2.5">
                 <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-slate-100 cursor-pointer">
                   <input
                     type="checkbox"
@@ -1146,7 +1146,7 @@ export function SourceReturnWizard({
                       <select
                         value={relayOutGroup}
                         onChange={(e) => setRelayOutGroup(e.target.value as PortGroupCode)}
-                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                        className="w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
                       >
                         {OUTPUT_BANKS.map((b) => (
                           <option key={b.code} value={b.code}>
@@ -1165,7 +1165,7 @@ export function SourceReturnWizard({
                         max={48}
                         value={relayOutSlot}
                         onChange={(e) => setRelayOutSlot(Math.max(1, Number(e.target.value) || 1))}
-                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                        className="w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
                       />
                     </div>
                   </div>
@@ -1178,7 +1178,7 @@ export function SourceReturnWizard({
                 type="button"
                 disabled={!canStageReturn}
                 onClick={handleStageReturn}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 dark:bg-sky-500 px-4 py-2 text-xs font-semibold text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-400 disabled:opacity-40 cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-[2px] bg-sky-600 dark:bg-sky-500 px-4 py-2 text-xs font-semibold text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-400 disabled:opacity-40 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Stage Return / Output Patch
@@ -1186,26 +1186,26 @@ export function SourceReturnWizard({
             </div>
           </div>
 
-          <div className="lg:col-span-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 flex flex-col justify-between gap-4">
+          <div className="lg:col-span-5 rounded-[2px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 flex flex-col justify-between gap-4">
             <div className="space-y-2.5">
               <div className="border-b border-slate-200 dark:border-slate-800 pb-3">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                <h3 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100">
                   Return Signal Chain Preview
                 </h3>
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
-                <span className="rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-1 text-indigo-800 dark:text-indigo-200">
+                <span className="rounded-[1px] border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-1 text-indigo-800 dark:text-indigo-200">
                   {busKind.toUpperCase()} {busIndex} ({busKind === 'mon' ? monitorSourceRef : busName})
                 </span>
                 <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-                <span className="rounded-md border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/60 px-2 py-1 text-sky-800 dark:text-sky-200">
+                <span className="rounded-[1px] border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/60 px-2 py-1 text-sky-800 dark:text-sky-200">
                   Out {originOutGroup}.{originOutSlot}
                   {stereoOutput ? `–${originOutSlot + 1}` : ''}
                 </span>
                 {enableRelay && relayConsole && (
                   <>
                     <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/60 px-2 py-1 text-amber-800 dark:text-amber-200">
+                    <span className="rounded-[1px] border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/60 px-2 py-1 text-amber-800 dark:text-amber-200">
                       {resolveNodeName(rig, relayConsole)} Out {relayOutGroup}.{relayOutSlot}
                     </span>
                   </>
@@ -1213,7 +1213,7 @@ export function SourceReturnWizard({
               </div>
             </div>
 
-            <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 p-3">
+            <div className="rounded-[2px] border border-slate-200 dark:border-slate-800 bg-[#f3f5f8] dark:bg-[#090d14]/70 p-3">
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                 Verified .snap JSON Paths
               </div>

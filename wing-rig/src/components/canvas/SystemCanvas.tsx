@@ -15,6 +15,7 @@ import { Move, PanelRightOpen } from 'lucide-react';
 import type { Point2D, RigDocument, TraceResult, TrunkConnection, TrunkProtocol } from '../../schema/rig';
 import {
   PROTOCOL_META,
+  buildNodeTopologySummary,
   resolveNodeName,
   resolveNodePosition,
   resolveNodeZone,
@@ -101,6 +102,7 @@ export function reconcileFlowNodes(
   params: {
     rig: RigDocument;
     editMode: boolean;
+    isDark?: boolean;
     selection: SelectionState;
     trace: TraceResult | null;
     activeNodeSet: Set<string>;
@@ -108,7 +110,16 @@ export function reconcileFlowNodes(
     onSelectNode: (id: string) => void;
   },
 ): HardwareFlowNode[] {
-  const { rig, editMode, selection, trace, activeNodeSet, snapshotNodeIds, onSelectNode } = params;
+  const {
+    rig,
+    editMode,
+    isDark = false,
+    selection,
+    trace,
+    activeNodeSet,
+    snapshotNodeIds,
+    onSelectNode,
+  } = params;
   const prevById = new Map(prevNodes.map((n) => [n.id, n]));
 
   return rig.nodes.map((node) => {
@@ -129,7 +140,8 @@ export function reconcileFlowNodes(
         hardware: node,
         displayName: resolveNodeName(rig, node),
         displayZone: resolveNodeZone(rig, node),
-        notes: rig.annotations.nodes[node.id]?.notes,
+        summary: buildNodeTopologySummary(rig, node),
+        isDark,
         editMode,
         isSelected: selection?.type === 'node' && selection.id === node.id,
         traceState,
@@ -167,6 +179,7 @@ export function SystemCanvas({
     reconcileFlowNodes([], {
       rig,
       editMode,
+      isDark,
       selection,
       trace,
       activeNodeSet,
@@ -180,6 +193,7 @@ export function SystemCanvas({
       reconcileFlowNodes(prev, {
         rig,
         editMode,
+        isDark,
         selection,
         trace,
         activeNodeSet,
@@ -187,7 +201,7 @@ export function SystemCanvas({
         onSelectNode,
       }),
     );
-  }, [rig, editMode, selection, trace, activeNodeSet, snapshotNodeIds, onSelectNode]);
+  }, [rig, editMode, isDark, selection, trace, activeNodeSet, snapshotNodeIds, onSelectNode]);
 
   const livePositions = useMemo(
     () => new Map(flowNodes.map((n) => [n.id, n.position])),
@@ -271,7 +285,7 @@ export function SystemCanvas({
   }, [rig, selection]);
 
   return (
-    <div className="relative h-full w-full bg-slate-50 dark:bg-slate-950">
+    <div className="relative h-full w-full bg-[#f3f5f8] dark:bg-[#090d14]">
       {trace && (
         <TraceBanner
           trace={trace}
@@ -283,9 +297,9 @@ export function SystemCanvas({
 
       {/* Subtle Edit Mode room-layout drag cue */}
       {editMode && !trace && (
-        <div className="pointer-events-none absolute top-3 left-3 z-10 inline-flex items-center gap-1.5 rounded-lg border border-amber-300/90 dark:border-amber-700/80 bg-amber-50/95 dark:bg-amber-950/90 backdrop-blur-xs px-2.5 py-1 text-[11px] font-medium text-amber-900 dark:text-amber-200 shadow-xs">
+        <div className="pointer-events-none absolute top-3 left-3 z-10 inline-flex items-center gap-1.5 rounded-[2px] border border-amber-400/90 dark:border-amber-700/80 bg-amber-50/95 dark:bg-amber-950/90 backdrop-blur-xs px-2.5 py-1 font-mono text-[10.5px] font-semibold text-amber-900 dark:text-amber-200 shadow-xs">
           <Move className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-          <span>Drag blocks to arrange room layout · Auto-saved</span>
+          <span>EDIT MODE · DRAG BLOCKS TO ARRANGE · AUTO-SAVED</span>
         </div>
       )}
 
@@ -298,29 +312,29 @@ export function SystemCanvas({
         nodesConnectable={false}
         elementsSelectable={true}
         snapToGrid={true}
-        snapGrid={[11, 11]}
+        snapGrid={[14, 14]}
         onNodesChange={handleNodesChange}
         onNodeClick={handleNodeClick}
         onNodeDragStop={handleNodeDragStop}
         onPaneClick={() => onClearSelection()}
         fitView
-        fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
+        fitViewOptions={{ padding: 0.16, maxZoom: 1.05 }}
         minZoom={0.35}
         maxZoom={1.75}
         proOptions={{ hideAttribution: true }}
       >
         <Background
-          variant={BackgroundVariant.Dots}
-          gap={22}
-          size={1.2}
-          color={isDark ? '#334155' : '#cbd5e1'}
+          variant={BackgroundVariant.Lines}
+          gap={28}
+          lineWidth={1}
+          color={isDark ? 'rgba(148, 163, 184, 0.08)' : 'rgba(15, 23, 42, 0.055)'}
         />
         <Controls showInteractive={false} position="bottom-left" />
       </ReactFlow>
 
-      {/* Protocol Legend & Read-Only / Edit status pill */}
-      <div className="pointer-events-auto absolute bottom-3 left-14 z-10 hidden sm:flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white/92 dark:bg-slate-900/92 backdrop-blur-xs px-3 py-1.5 shadow-xs">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+      {/* Protocol Legend & Read-Only / Edit status strip */}
+      <div className="pointer-events-auto absolute bottom-3 left-14 z-10 hidden sm:flex items-center gap-2.5 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-xs px-3 py-1.5 shadow-xs">
+        <span className="font-mono text-[9.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
           Trunks
         </span>
         {usedProtocols.map((protocol) => {
@@ -328,17 +342,17 @@ export function SystemCanvas({
           return (
             <span
               key={protocol}
-              className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-200"
+              className="inline-flex items-center gap-1.5 font-mono text-[10.5px] font-semibold text-slate-700 dark:text-slate-200"
             >
               <span
                 style={{ backgroundColor: isDark ? meta.darkColor : meta.color }}
-                className="h-2 w-4 rounded-full"
+                className="h-1.5 w-3.5"
               />
               {meta.shortLabel}
             </span>
           );
         })}
-        <span className="mx-1 h-3.5 w-px bg-slate-200 dark:bg-slate-700" />
+        <span className="mx-0.5 h-3.5 w-px bg-slate-200 dark:bg-slate-700" />
         <span className="text-[11px] text-slate-500 dark:text-slate-400">
           {editMode ? 'Drag devices to arrange' : 'Click any device or trunk to inspect & trace'}
         </span>
@@ -350,7 +364,7 @@ export function SystemCanvas({
           type="button"
           onClick={onExpandInspector}
           title="Expand Rig Inspector"
-          className="pointer-events-auto absolute bottom-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xs px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-sm hover:border-sky-500 hover:text-sky-700 dark:hover:text-sky-400 transition-colors cursor-pointer"
+          className="pointer-events-auto absolute bottom-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-[2px] border border-slate-400 dark:border-slate-600 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-xs px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide text-slate-800 dark:text-slate-100 shadow-xs hover:border-sky-600 hover:text-sky-700 dark:hover:text-sky-400 transition-colors cursor-pointer"
         >
           <PanelRightOpen className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
           <span className="max-w-[190px] truncate">{collapsedInspectLabel}</span>

@@ -2,6 +2,7 @@ import { memo } from 'react';
 import {
   BaseEdge,
   EdgeLabelRenderer,
+  Position,
   getSmoothStepPath,
   type Edge,
   type EdgeProps,
@@ -22,6 +23,21 @@ export interface TrunkEdgeData extends Record<string, unknown> {
 
 export type TrunkFlowEdge = Edge<TrunkEdgeData, 'trunk'>;
 
+function offsetFromHandle(x: number, y: number, position: Position, dist: number): { x: number; y: number } {
+  switch (position) {
+    case Position.Right:
+      return { x: x + dist, y };
+    case Position.Left:
+      return { x: x - dist, y };
+    case Position.Bottom:
+      return { x, y: y + dist };
+    case Position.Top:
+      return { x, y: y - dist };
+    default:
+      return { x, y };
+  }
+}
+
 export const TrunkEdge = memo(function TrunkEdge({
   id,
   sourceX,
@@ -39,19 +55,26 @@ export const TrunkEdge = memo(function TrunkEdge({
     targetY,
     sourcePosition,
     targetPosition,
-    borderRadius: 16,
+    borderRadius: 2,
   });
 
   if (!data) return null;
 
   const { trunk, displayName, cableTag, isSelected, isDark, traceState, onSelect } = data;
   const proto = PROTOCOL_META[trunk.protocol];
+  const strokeColor = isDark ? proto.darkColor : proto.color;
   const fwdCount = trunk.channels.length;
   const retCount = trunk.returnChannels.length;
   const isBidirectional = retCount > 0;
 
-  const strokeWidth = traceState === 'active' ? 3.5 : isSelected ? 3 : 2.25;
-  const opacity = traceState === 'dimmed' ? 0.18 : 1;
+  const strokeWidth = traceState === 'active' ? 3.25 : isSelected ? 2.75 : 2.15;
+  const opacity = traceState === 'dimmed' ? 0.16 : 1;
+
+  // Show port-endpoint stamps when there's comfortable visual runway between nodes
+  const spanDist = Math.hypot(targetX - sourceX, targetY - sourceY);
+  const showEndpointStamps = spanDist >= 110;
+  const srcStampPos = offsetFromHandle(sourceX, sourceY, sourcePosition, 16);
+  const tgtStampPos = offsetFromHandle(targetX, targetY, targetPosition, 16);
 
   return (
     <>
@@ -59,13 +82,46 @@ export const TrunkEdge = memo(function TrunkEdge({
         id={id}
         path={edgePath}
         style={{
-          stroke: isDark ? proto.darkColor : proto.color,
+          stroke: strokeColor,
           strokeWidth,
           opacity,
           transition: 'opacity 150ms ease, stroke-width 150ms ease',
         }}
       />
       <EdgeLabelRenderer>
+        {/* Port Endpoint Stamps */}
+        {showEndpointStamps && (
+          <>
+            <div
+              style={{
+                position: 'absolute',
+                transform: `translate(-50%, -50%) translate(${srcStampPos.x}px, ${srcStampPos.y}px)`,
+                pointerEvents: 'none',
+                opacity,
+                borderColor: strokeColor,
+                color: strokeColor,
+              }}
+              className="border bg-white dark:bg-[#090d14] px-1 py-0.5 font-mono text-[8.5px] font-bold leading-none uppercase tracking-tight"
+            >
+              {trunk.sourcePortGroup}
+            </div>
+            <div
+              style={{
+                position: 'absolute',
+                transform: `translate(-50%, -50%) translate(${tgtStampPos.x}px, ${tgtStampPos.y}px)`,
+                pointerEvents: 'none',
+                opacity,
+                borderColor: strokeColor,
+                color: strokeColor,
+              }}
+              className="border bg-white dark:bg-[#090d14] px-1 py-0.5 font-mono text-[8.5px] font-bold leading-none uppercase tracking-tight"
+            >
+              {trunk.targetPortGroup}
+            </div>
+          </>
+        )}
+
+        {/* Broadcast Patchbay Split Two-Tone Trunk Callout */}
         <div
           style={{
             position: 'absolute',
@@ -78,53 +134,62 @@ export const TrunkEdge = memo(function TrunkEdge({
         >
           <button
             type="button"
+            title={`${displayName}${cableTag ? ` (${cableTag})` : ''}`}
             onClick={(e) => {
               e.stopPropagation();
               onSelect(trunk.id);
             }}
-            className={`group flex flex-col items-center gap-0.5 rounded-lg border px-2.5 py-1 text-left shadow-xs transition-all cursor-pointer ${
+            style={{
+              borderColor:
+                traceState === 'active'
+                  ? strokeColor
+                  : isSelected
+                    ? isDark
+                      ? '#f1f5f9'
+                      : '#0f172a'
+                    : strokeColor,
+            }}
+            className={`group flex flex-col items-stretch rounded-[1px] border bg-white dark:bg-[#111827] text-left transition-all cursor-pointer ${
               traceState === 'active'
-                ? 'bg-sky-50 dark:bg-sky-950/90 border-sky-600 dark:border-sky-400 ring-3 ring-sky-500/20 dark:ring-sky-400/25 shadow-sm'
+                ? 'ring-2 ring-sky-500/30 dark:ring-sky-400/35 shadow-sm'
                 : isSelected
-                  ? 'bg-white dark:bg-slate-900 border-slate-900 dark:border-slate-200 ring-2 ring-slate-900/10 dark:ring-slate-200/15 shadow-sm'
-                  : 'bg-white/95 dark:bg-slate-900/95 border-slate-300 dark:border-slate-700 hover:border-slate-500 dark:hover:border-slate-500 hover:bg-white dark:hover:bg-slate-900'
+                  ? 'ring-2 ring-slate-900/15 dark:ring-slate-100/20 shadow-sm'
+                  : 'hover:shadow-xs'
             }`}
           >
-            <div className="flex items-center gap-1.5">
+            {/* Primary split bar: solid protocol block | channel counts */}
+            <div className="flex items-stretch font-mono text-[10px]">
               <span
                 style={{
-                  backgroundColor: isDark ? proto.darkBg : proto.bg,
-                  color: isDark ? proto.darkText : proto.text,
-                  borderColor: isDark ? proto.darkBorder : proto.border,
+                  backgroundColor: strokeColor,
+                  color: isDark ? '#090d14' : '#ffffff',
                 }}
-                className="inline-flex items-center rounded border px-1.5 py-0 text-[9.5px] font-mono font-semibold uppercase tracking-wide leading-4"
+                className="inline-flex items-center px-1.5 py-0.5 font-bold uppercase tracking-wider leading-none"
               >
                 {proto.shortLabel}
               </span>
-              <span className="max-w-[148px] truncate text-[11px] font-semibold text-slate-800 dark:text-slate-100">
-                {displayName}
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 font-semibold text-slate-900 dark:text-slate-100 leading-none">
+                {isBidirectional ? (
+                  <>
+                    <span>{fwdCount}</span>
+                    <ArrowLeftRight className="w-2.5 h-2.5 text-slate-400 dark:text-slate-500" />
+                    <span>{retCount}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{fwdCount} ch</span>
+                    <ArrowRight className="w-2.5 h-2.5 text-slate-400 dark:text-slate-500" />
+                  </>
+                )}
               </span>
             </div>
 
-            <div className="flex items-center gap-1.5 font-mono text-[10px] text-slate-600 dark:text-slate-400">
-              {isBidirectional ? (
-                <span className="inline-flex items-center gap-1">
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">{fwdCount}</span>
-                  <ArrowLeftRight className="w-3 h-3 text-slate-400 dark:text-slate-500" />
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">{retCount}</span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1">
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">{fwdCount} ch</span>
-                  <ArrowRight className="w-3 h-3 text-slate-400 dark:text-slate-500" />
-                </span>
-              )}
-              {cableTag && (
-                <span className="rounded bg-slate-100 dark:bg-slate-800 px-1 text-[9.5px] text-slate-500 dark:text-slate-400">
-                  {cableTag}
-                </span>
-              )}
-            </div>
+            {/* Secondary cable tag or concise trunk name strip */}
+            {(cableTag || displayName) && (
+              <div className="border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b111d] px-1.5 py-0.5 font-mono text-[8.5px] text-slate-600 dark:text-slate-400 max-w-[152px] truncate text-center leading-tight">
+                {cableTag ?? displayName}
+              </div>
+            )}
           </button>
         </div>
       </EdgeLabelRenderer>

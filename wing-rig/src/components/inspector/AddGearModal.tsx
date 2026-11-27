@@ -142,25 +142,25 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 dark:bg-black/70 backdrop-blur-xs p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl overflow-hidden">
+      <div className="w-full max-w-lg rounded-[2px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111827] shadow-xl overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-5 py-3.5">
-          <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+          <h2 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100">
             Add External Gear or Custom Trunk
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+            className="rounded-[2px] p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="flex gap-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 px-5 py-2.5">
+        <div className="flex gap-2 border-b border-slate-100 dark:border-slate-800 bg-[#f3f5f8] dark:bg-[#090d14]/60 px-5 py-2.5">
           <button
             type="button"
             onClick={() => setTab('gear')}
-            className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold cursor-pointer ${
+            className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-[2px] py-1.5 text-xs font-semibold cursor-pointer ${
               tab === 'gear'
                 ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950 shadow-xs'
                 : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
@@ -172,7 +172,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
           <button
             type="button"
             onClick={() => setTab('trunk')}
-            className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold cursor-pointer ${
+            className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-[2px] py-1.5 text-xs font-semibold cursor-pointer ${
               tab === 'trunk'
                 ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950 shadow-xs'
                 : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
@@ -196,7 +196,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                   value={gearName}
                   onChange={(e) => setGearName(e.target.value)}
                   placeholder="e.g. Livestream Encoder"
-                  className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+                  className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -208,7 +208,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                   value={gearModel}
                   onChange={(e) => setGearModel(e.target.value)}
                   placeholder="e.g. Blackmagic ATEM / Focusrite"
-                  className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+                  className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -221,7 +221,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                 <select
                   value={gearKind}
                   onChange={(e) => setGearKind(e.target.value as HardwareNodeKind)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
+                  className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                 >
                   {NODE_KINDS.map((k) => (
                     <option key={k.value} value={k.value}>
@@ -237,7 +237,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                 <select
                   value={gearZone}
                   onChange={(e) => setGearZone(e.target.value as RigZone)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
+                  className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                 >
                   {ZONES.map((z) => (
                     <option key={z} value={z}>
@@ -259,7 +259,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                   max={64}
                   value={gearInputs}
                   onChange={(e) => setGearInputs(Number(e.target.value))}
-                  className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
+                  className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -272,7 +272,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                   max={64}
                   value={gearOutputs}
                   onChange={(e) => setGearOutputs(Number(e.target.value))}
-                  className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
+                  className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -286,7 +286,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                 value={gearNotes}
                 onChange={(e) => setGearNotes(e.target.value)}
                 placeholder="Location, power, sample rate, or routing notes..."
-                className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+                className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
               />
             </div>
 
@@ -294,13 +294,13 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+                className="rounded-[2px] border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 dark:bg-sky-500 px-3.5 py-1.5 text-xs font-semibold text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-sky-400 cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-[2px] bg-slate-900 dark:bg-sky-500 px-3.5 py-1.5 text-xs font-semibold text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-sky-400 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Add Hardware
@@ -319,7 +319,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                   value={trunkLabel}
                   onChange={(e) => setTrunkLabel(e.target.value)}
                   placeholder="e.g. Broadcast Dante Feed"
-                  className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+                  className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -329,7 +329,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                 <select
                   value={trunkProtocol}
                   onChange={(e) => setTrunkProtocol(e.target.value as TrunkProtocol)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
+                  className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                 >
                   {PROTOCOLS.map((p) => (
                     <option key={p} value={p}>
@@ -348,7 +348,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                 <select
                   value={sourceNodeId}
                   onChange={(e) => setSourceNodeId(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
+                  className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                 >
                   {rig.nodes.map((n) => (
                     <option key={n.id} value={n.id}>
@@ -364,7 +364,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                 <select
                   value={targetNodeId}
                   onChange={(e) => setTargetNodeId(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
+                  className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                 >
                   {rig.nodes.map((n) => (
                     <option key={n.id} value={n.id}>
@@ -383,7 +383,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                 <select
                   value={sourceGroup}
                   onChange={(e) => setSourceGroup(e.target.value as PortGroupCode)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                  className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
                 >
                   {(['ANALOG', 'A', 'B', 'C', 'LCL', 'AUX', 'USB', 'CRD', 'DANTE', 'SC'] as PortGroupCode[]).map(
                     (g) => (
@@ -401,7 +401,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                 <select
                   value={targetGroup}
                   onChange={(e) => setTargetGroup(e.target.value as PortGroupCode)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                  className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
                 >
                   {(['ANALOG', 'A', 'B', 'C', 'LCL', 'AUX', 'USB', 'CRD', 'DANTE', 'SC'] as PortGroupCode[]).map(
                     (g) => (
@@ -422,7 +422,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                   max={64}
                   value={fwdCount}
                   onChange={(e) => setFwdCount(Number(e.target.value))}
-                  className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                  className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
                 />
               </div>
               <div>
@@ -435,7 +435,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                   max={64}
                   value={retCount}
                   onChange={(e) => setRetCount(Number(e.target.value))}
-                  className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
+                  className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
                 />
               </div>
             </div>
@@ -450,7 +450,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                   value={cableTag}
                   onChange={(e) => setCableTag(e.target.value)}
                   placeholder="e.g. DANTE-PRI-01"
-                  className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                  className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                 />
               </div>
               <div>
@@ -462,7 +462,7 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
                   value={trunkNotes}
                   onChange={(e) => setTrunkNotes(e.target.value)}
                   placeholder="Optional run notes..."
-                  className="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                  className="mt-1 w-full rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                 />
               </div>
             </div>
@@ -477,14 +477,14 @@ export function AddGearModal({ rig, onClose, onAddNode, onAddTrunk }: AddGearMod
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+                className="rounded-[2px] border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={sourceNodeId === targetNodeId}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 dark:bg-sky-500 px-3.5 py-1.5 text-xs font-semibold text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-sky-400 disabled:opacity-40 cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-[2px] bg-slate-900 dark:bg-sky-500 px-3.5 py-1.5 text-xs font-semibold text-white dark:text-slate-950 hover:bg-slate-800 dark:hover:bg-sky-400 disabled:opacity-40 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Add Trunk

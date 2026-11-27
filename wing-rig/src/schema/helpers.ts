@@ -956,4 +956,404 @@ export function searchRig(doc: RigDocument, rawQuery: string): SearchHit[] {
   return hits.slice(0, 30);
 }
 
+export type NodeTopologyRole = 'hub' | 'source' | 'dest';
+
+export interface NodeTopologyRow {
+  left: string;
+  right: string;
+  protocol: TrunkProtocol;
+}
+
+export interface NodeTopologySummary {
+  role: NodeTopologyRole;
+  statusText: string;
+  statusTone: 'sky' | 'indigo' | 'rose' | 'amber' | 'slate';
+  subtitle: string;
+  rows: NodeTopologyRow[];
+  phantomCount: number;
+  noteLine?: string;
+  sheetRef: string;
+}
+
+export function portCodeToProtocol(code: PortGroupCode): TrunkProtocol {
+  switch (code) {
+    case 'A':
+    case 'B':
+    case 'C':
+    case 'AES':
+      return 'aes50';
+    case 'LCL':
+    case 'ANALOG':
+      return 'analog-xlr';
+    case 'AUX':
+      return 'analog-trs';
+    case 'USB':
+    case 'CRD':
+    case 'PLAY':
+    case 'REC':
+      return 'usb';
+    case 'SC':
+      return 'stageconnect';
+    case 'MOD':
+    case 'DANTE':
+      return 'dante';
+    default:
+      return 'network';
+  }
+}
+
+function formatPortLabel(code: PortGroupCode): string {
+  switch (code) {
+    case 'A':
+      return 'AES50-A';
+    case 'B':
+      return 'AES50-B';
+    case 'C':
+      return 'AES50-C';
+    case 'LCL':
+      return 'LOCAL';
+    case 'AUX':
+      return 'AUX TRS';
+    case 'SC':
+      return 'STAGECON';
+    case 'MOD':
+      return 'DANTE/MOD';
+    default:
+      return code;
+  }
+}
+
+function stripStereoSuffix(name: string): string {
+  return name.replace(/\s+(L|R|Left|Right)$/i, '').trim();
+}
+
+interface CollapsedFeed {
+  slotLabel: string;
+  name: string;
+  isStereo: boolean;
+  protocol: TrunkProtocol;
+}
+
+function collapseChannelFeeds(
+  doc: RigDocument,
+  code: PortGroupCode,
+  channels: ChannelPatch[],
+): CollapsedFeed[] {
+  const sorted = [...channels].sort((a, b) => a.slot - b.slot);
+  const protocol = portCodeToProtocol(code);
+  const feeds: CollapsedFeed[] = [];
+  let i = 0;
+
+  while (i < sorted.length) {
+    const ch = sorted[i];
+    const next = sorted[i + 1];
+    const name = resolveChannelName(doc, ch);
+    const nextName = next ? resolveChannelName(doc, next) : '';
+
+    const isAdjacentPair =
+      next &&
+      next.slot === ch.slot + 1 &&
+      ((ch.mode === 'ST' && ch.stereoSide === 'L' && next.mode === 'ST' && next.stereoSide === 'R') ||
+        (/\s+L$/i.test(name) && /\s+R$/i.test(nextName) && stripStereoSuffix(name) === stripStereoSuffix(nextName)));
+
+    if (isAdjacentPair && next) {
+      const base = stripStereoSuffix(name) || name;
+      feeds.push({
+        slotLabel: `${code} ${ch.slot}–${next.slot}`,
+        name: `${base} (ST)`,
+        isStereo: true,
+        protocol,
+      });
+      i += 2;
+    } else {
+      feeds.push({
+        slotLabel: `${code}.${ch.slot}`,
+        name,
+        isStereo: false,
+        protocol,
+      });
+      i += 1;
+    }
+  }
+
+  return feeds;
+}
+
+function summarizeChannelRange(doc: RigDocument, channels: ChannelPatch[]): string {
+  const uniqueNames: string[] = [];
+  const seen = new Set<string>();
+  for (const ch of channels) {
+    const base = stripStereoSuffix(resolveChannelName(doc, ch));
+    if (base && !seen.has(base.toLowerCase())) {
+      seen.add(base.toLowerCase());
+      uniqueNames.push(base);
+    }
+  }
+  if (uniqueNames.length === 0) return `${channels.length} ch`;
+  if (uniqueNames.length <= 2) return `${uniqueNames.join(', ')} (${channels.length})`;
+  return `${uniqueNames.slice(0, 2).join(', ')}… (${channels.length})`;
+}
+
+function extractClockBadge(notes?: string): { text: string; tone: 'sky' | 'indigo' } | null {
+  if (!notes) return null;
+  if (/clock\s*master/i.test(notes)) {
+    const rate = notes.match(/\b(44\.1|48|96)\s*kHz\b/i);
+    return { text: rate ? `${rate[1]}kHz MASTER` : 'CLOCK MASTER', tone: 'sky' };
+  }
+  const syncMatch = notes.match(/synced\s+to\s+(AES50-[ABC]|Dante|StageCONNECT|Word\s*Clock)/i);
+  if (syncMatch) {
+    return { text: `SYNC: ${syncMatch[1].toUpperCase()}`, tone: 'indigo' };
+  }
+  if (/\bsync(ed)?\b|\bslave\b/i.test(notes)) {
+    return { text: 'EXT SYNC', tone: 'indigo' };
+  }
+  return null;
+}
+
+function buildFirstNoteSentence(notes?: string): string | undefined {
+  if (!notes) return undefined;
+  const trimmed = notes.trim();
+  if (!trimmed) return undefined;
+  const firstPeriod = trimmed.indexOf('. ');
+  if (firstPeriod > 0 && firstPeriod <= 56) {
+    return trimmed.slice(0, firstPeriod);
+  }
+  return trimmed.length > 58 ? `${trimmed.slice(0, 56)}…` : trimmed;
+}
+
+/**
+ * Derives a role-adaptive topology block summary from canonical RigDocument state.
+ * Shared by interactive canvas cards and Page 1 vector Print/PDF exports so both stay 1:1.
+ */
+export function buildNodeTopologySummary(
+  doc: RigDocument,
+  node: HardwareNode,
+): NodeTopologySummary {
+  const notes = doc.annotations.nodes[node.id]?.notes;
+  const phantomCount = node.portGroups
+    .filter((pg) => pg.direction !== 'output')
+    .reduce((sum, pg) => sum + pg.channels.filter((c) => Boolean(c.phantom48v)).length, 0);
+
+  const hasInputs = node.portGroups.some((pg) => pg.direction !== 'output' && pg.channels.length > 0);
+  const hasOutputs = node.portGroups.some((pg) => pg.direction !== 'input' && pg.channels.length > 0);
+
+  const role: NodeTopologyRole =
+    node.kind === 'console'
+      ? 'hub'
+      : node.kind === 'iem' || node.kind === 'amp' || (node.kind === 'external' && hasInputs && !hasOutputs)
+        ? 'dest'
+        : 'source';
+
+  const sheetRef =
+    node.kind === 'console'
+      ? '§2–3'
+      : node.kind === 'stagebox'
+        ? '§1'
+        : node.kind === 'iem' || node.kind === 'amp'
+          ? '§4'
+          : '§3';
+
+  const noteLine = buildFirstNoteSentence(notes);
+
+  if (role === 'hub') {
+    const busCount = node.mixBuses.filter((b) => b.kind === 'bus').length;
+    const mainCount = node.mixBuses.filter((b) => b.kind === 'main').length;
+    const monCount = node.mixBuses.filter((b) => b.kind === 'mon').length;
+    const mixParts: string[] = [];
+    if (busCount > 0) mixParts.push(`${busCount} Bus`);
+    if (mainCount > 0) mixParts.push(`${mainCount} Main`);
+    else if (monCount > 0) mixParts.push(`${monCount} Mon`);
+    const subtitle = mixParts.length > 0 ? `${node.model} · ${mixParts.join(' · ')}` : node.model;
+
+    const clock = extractClockBadge(notes);
+    const statusText = clock
+      ? clock.text
+      : busCount > 0
+        ? `${busCount} BUS`
+        : 'CONSOLE';
+    const statusTone = clock ? clock.tone : 'sky';
+
+    // Aggregate per physical port code (combining input & output groups on same jack)
+    const portAgg = new Map<
+      PortGroupCode,
+      { inCount: number; inCap: number; outCount: number; outCap: number }
+    >();
+    for (const pg of node.portGroups) {
+      if (pg.channels.length === 0) continue;
+      const entry = portAgg.get(pg.code) ?? { inCount: 0, inCap: 0, outCount: 0, outCap: 0 };
+      if (pg.direction === 'input') {
+        entry.inCount += pg.channels.length;
+        entry.inCap = Math.max(entry.inCap, pg.capacity);
+      } else if (pg.direction === 'output') {
+        entry.outCount += pg.channels.length;
+        entry.outCap = Math.max(entry.outCap, pg.capacity);
+      } else {
+        entry.inCount += pg.channels.length;
+        entry.outCount += pg.channels.length;
+        entry.inCap = Math.max(entry.inCap, pg.capacity);
+        entry.outCap = Math.max(entry.outCap, pg.capacity);
+      }
+      portAgg.set(pg.code, entry);
+    }
+
+    const allRows: NodeTopologyRow[] = [];
+    for (const [code, agg] of portAgg.entries()) {
+      const parts: string[] = [];
+      if (agg.inCount > 0 && agg.outCount > 0) {
+        parts.push(`${agg.inCount} in`, `${agg.outCount} out`);
+      } else if (agg.inCount > 0) {
+        parts.push(agg.inCap > 0 && agg.inCap <= 32 ? `${agg.inCount}/${agg.inCap} in` : `${agg.inCount} in`);
+      } else if (agg.outCount > 0) {
+        parts.push(agg.outCap > 0 && agg.outCap <= 32 ? `${agg.outCount}/${agg.outCap} out` : `${agg.outCount} out`);
+      }
+      allRows.push({
+        left: formatPortLabel(code),
+        right: parts.join(' · '),
+        protocol: portCodeToProtocol(code),
+      });
+    }
+
+    const rows: NodeTopologyRow[] =
+      allRows.length <= 4
+        ? allRows
+        : [
+            ...allRows.slice(0, 3),
+            {
+              left: `+${allRows.length - 3} PORTS`,
+              right: allRows
+                .slice(3)
+                .map((r) => r.left)
+                .join(', '),
+              protocol: 'network',
+            },
+          ];
+
+    return {
+      role,
+      statusText,
+      statusTone,
+      subtitle,
+      rows,
+      phantomCount,
+      noteLine,
+      sheetRef,
+    };
+  }
+
+  if (role === 'dest') {
+    const allFeeds: CollapsedFeed[] = [];
+    let rawCount = 0;
+    for (const pg of node.portGroups) {
+      if (pg.channels.length === 0) continue;
+      rawCount += pg.channels.length;
+      allFeeds.push(...collapseChannelFeeds(doc, pg.code, pg.channels));
+    }
+
+    const allStereo = allFeeds.length > 0 && allFeeds.every((f) => f.isStereo);
+    const statusText = allStereo
+      ? `${allFeeds.length}× STEREO`
+      : `${rawCount} ${rawCount === 1 ? 'FEED' : 'FEEDS'}`;
+
+    const rows: NodeTopologyRow[] =
+      allFeeds.length <= 4
+        ? allFeeds.map((f) => ({ left: f.slotLabel, right: f.name, protocol: f.protocol }))
+        : [
+            ...allFeeds.slice(0, 3).map((f) => ({ left: f.slotLabel, right: f.name, protocol: f.protocol })),
+            {
+              left: `+${allFeeds.length - 3} MORE`,
+              right: allFeeds
+                .slice(3)
+                .map((f) => stripStereoSuffix(f.name.replace(/\s*\(ST\)$/, '')))
+                .slice(0, 2)
+                .join(', '),
+              protocol: allFeeds[3]?.protocol ?? 'analog-xlr',
+            },
+          ];
+
+    return {
+      role,
+      statusText,
+      statusTone: node.kind === 'amp' ? 'amber' : 'slate',
+      subtitle: node.model,
+      rows,
+      phantomCount,
+      noteLine,
+      sheetRef,
+    };
+  }
+
+  // role === 'source' (stagebox, wireless, media, or source-only external)
+  const rows: NodeTopologyRow[] = [];
+  let totalCh = 0;
+
+  for (const pg of node.portGroups) {
+    if (pg.channels.length === 0) continue;
+    totalCh += pg.channels.length;
+    const proto = portCodeToProtocol(pg.code);
+
+    // Small groups (e.g. Media PC 4 ch): show individual collapsed named feeds
+    const collapsed = collapseChannelFeeds(doc, pg.code, pg.channels);
+    if (collapsed.length <= 3 && pg.channels.length <= 6) {
+      for (const feed of collapsed) {
+        rows.push({ left: feed.slotLabel, right: feed.name, protocol: proto });
+      }
+      continue;
+    }
+
+    const sorted = [...pg.channels].sort((a, b) => a.slot - b.slot);
+    // Detect trailing Talkback block (3+ TB channels) on stageboxes/sources for crisp range grouping
+    const tbRegex = /\bTB\b|talkback/i;
+    const tbChannels = sorted.filter((c) => tbRegex.test(resolveChannelName(doc, c)));
+    const nonTbChannels = sorted.filter((c) => !tbRegex.test(resolveChannelName(doc, c)));
+
+    if (
+      pg.direction !== 'input' &&
+      tbChannels.length >= 3 &&
+      nonTbChannels.length >= 4 &&
+      tbChannels[0].slot > nonTbChannels[nonTbChannels.length - 1].slot
+    ) {
+      rows.push({
+        left: `CH ${nonTbChannels[0].slot}–${nonTbChannels[nonTbChannels.length - 1].slot}`,
+        right: summarizeChannelRange(doc, nonTbChannels),
+        protocol: proto,
+      });
+      rows.push({
+        left: `CH ${tbChannels[0].slot}–${tbChannels[tbChannels.length - 1].slot}`,
+        right: `Talkbacks (${tbChannels.length})`,
+        protocol: proto,
+      });
+    } else {
+      const prefix = pg.direction === 'input' ? 'RET' : pg.code === 'A' ? 'CH' : pg.code;
+      rows.push({
+        left: `${prefix} ${sorted[0].slot}–${sorted[sorted.length - 1].slot}`,
+        right: summarizeChannelRange(doc, sorted),
+        protocol: proto,
+      });
+    }
+  }
+
+  const trimmedRows: NodeTopologyRow[] =
+    rows.length <= 4
+      ? rows
+      : [
+          ...rows.slice(0, 3),
+          {
+            left: `+${rows.length - 3} MORE`,
+            right: `${totalCh} total ch`,
+            protocol: 'network',
+          },
+        ];
+
+  return {
+    role,
+    statusText: phantomCount > 0 ? `⚡ ${phantomCount}× 48V` : `${totalCh} CH`,
+    statusTone: phantomCount > 0 ? 'rose' : 'slate',
+    subtitle: node.model,
+    rows: trimmedRows,
+    phantomCount,
+    noteLine,
+    sheetRef,
+  };
+}
+
 export { busKindToGroup };

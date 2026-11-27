@@ -69,11 +69,11 @@ export function SnapImportModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 dark:bg-black/70 backdrop-blur-xs p-4">
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl overflow-hidden">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-[2px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111827] shadow-xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-5 py-3.5">
           <div>
-            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            <h2 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100">
               Import Behringer WING Snapshot (.snap)
             </h2>
             <p className="text-[11.5px] text-slate-500 dark:text-slate-400">
@@ -83,7 +83,7 @@ export function SnapImportModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+            className="rounded-[2px] p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -105,7 +105,7 @@ export function SnapImportModal({
               if (file) void handleFile(file);
             }}
             onClick={() => fileInputRef.current?.click()}
-            className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 text-center transition-colors cursor-pointer ${
+            className={`flex flex-col items-center justify-center rounded-[2px] border-2 border-dashed p-6 text-center transition-colors cursor-pointer ${
               isDragging
                 ? 'border-sky-500 bg-sky-50 dark:bg-sky-950/60'
                 : parsed
@@ -152,7 +152,7 @@ export function SnapImportModal({
           </div>
 
           {error && (
-            <div className="rounded-xl border border-rose-200 dark:border-rose-800/80 bg-rose-50 dark:bg-rose-950/60 px-3.5 py-2.5 text-xs text-rose-800 dark:text-rose-200">
+            <div className="rounded-[2px] border border-rose-200 dark:border-rose-800/80 bg-rose-50 dark:bg-rose-950/60 px-3.5 py-2.5 text-xs text-rose-800 dark:text-rose-200">
               <strong>Parse error:</strong> {error}
             </div>
           )}
@@ -161,7 +161,7 @@ export function SnapImportModal({
           {parsed && diff && (
             <div className="space-y-4">
               {/* Target console picker */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 px-3.5 py-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-[2px] border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 px-3.5 py-2.5">
                 <div>
                   <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
                     Target Console in Rig
@@ -173,7 +173,7 @@ export function SnapImportModal({
                 <select
                   value={selectedTargetId}
                   onChange={(e) => setSelectedTargetId(e.target.value)}
-                  className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
+                  className="rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:border-sky-500 focus:outline-none"
                 >
                   {consoleNodes.map((n) => (
                     <option key={n.id} value={n.id}>
@@ -188,19 +188,19 @@ export function SnapImportModal({
 
               {/* Parsed Snapshot Stats */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-2.5">
+                <div className="rounded-[2px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-2.5">
                   <div className="font-mono text-base font-bold text-slate-900 dark:text-slate-100">
                     {parsed.stats.activeInputs}
                   </div>
                   <div className="text-[10.5px] text-slate-500 dark:text-slate-400">Active Inputs</div>
                 </div>
-                <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-2.5">
+                <div className="rounded-[2px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-2.5">
                   <div className="font-mono text-base font-bold text-slate-900 dark:text-slate-100">
                     {parsed.stats.activeOutputs}
                   </div>
                   <div className="text-[10.5px] text-slate-500 dark:text-slate-400">Patched Outputs</div>
                 </div>
-                <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-2.5">
+                <div className="rounded-[2px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-2.5">
                   <div className="font-mono text-base font-bold text-amber-700 dark:text-amber-400">
                     {parsed.stats.passthroughOutputs}
                   </div>
@@ -208,7 +208,7 @@ export function SnapImportModal({
                     Direct Splits / Pass-thru
                   </div>
                 </div>
-                <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-2.5">
+                <div className="rounded-[2px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-2.5">
                   <div className="font-mono text-base font-bold text-sky-700 dark:text-sky-400">
                     {parsed.stats.namedBuses}
                   </div>
@@ -217,7 +217,7 @@ export function SnapImportModal({
               </div>
 
               {/* Layer 2 Preservation Guarantee */}
-              <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/70 dark:bg-emerald-950/40 px-3.5 py-2.5">
+              <div className="flex items-start gap-2.5 rounded-[2px] border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/70 dark:bg-emerald-950/40 px-3.5 py-2.5">
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-400" />
                 <div className="text-xs text-emerald-900 dark:text-emerald-200">
                   <strong>Layer 2 Annotations Protected:</strong> {diff.preservedAnnotationsCount}{' '}
@@ -227,19 +227,19 @@ export function SnapImportModal({
               </div>
 
               {/* Channel & Bus Diff Summary */}
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
+              <div className="rounded-[2px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-hidden">
                 <div className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
                   Pre-Apply Diff Preview — {diff.targetConsoleName}
                 </div>
                 <div className="p-3.5 space-y-3 text-xs">
                   <div className="grid grid-cols-3 gap-2 font-mono">
-                    <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/80 px-2.5 py-1.5 text-emerald-800 dark:text-emerald-300">
+                    <div className="rounded-[2px] bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/80 px-2.5 py-1.5 text-emerald-800 dark:text-emerald-300">
                       +{diff.addedChannels.length} ch added
                     </div>
-                    <div className="rounded-lg bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800/80 px-2.5 py-1.5 text-sky-800 dark:text-sky-300">
+                    <div className="rounded-[2px] bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800/80 px-2.5 py-1.5 text-sky-800 dark:text-sky-300">
                       ~{diff.updatedChannels.length} ch updated
                     </div>
-                    <div className="rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-slate-700 dark:text-slate-300">
+                    <div className="rounded-[2px] bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-slate-700 dark:text-slate-300">
                       -{diff.removedChannels.length} ch removed
                     </div>
                   </div>
@@ -274,12 +274,12 @@ export function SnapImportModal({
                         {diff.trunkSummaries.map((ts) => (
                           <div
                             key={ts.trunkId}
-                            className="flex items-center justify-between rounded border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 px-2.5 py-1 text-[11px]"
+                            className="flex items-center justify-between rounded-[1px] border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 px-2.5 py-1 text-[11px]"
                           >
                             <span className="font-medium text-slate-800 dark:text-slate-200">
                               {ts.label}
                               {ts.isNew && (
-                                <span className="ml-1.5 rounded bg-emerald-100 dark:bg-emerald-950 px-1 text-[9.5px] font-mono text-emerald-800 dark:text-emerald-300">
+                                <span className="ml-1.5 rounded-[1px] bg-emerald-100 dark:bg-emerald-950 px-1 text-[9.5px] font-mono text-emerald-800 dark:text-emerald-300">
                                   NEW
                                 </span>
                               )}
@@ -298,7 +298,7 @@ export function SnapImportModal({
                   )}
 
                   {diff.newOrphans.length > 0 && (
-                    <div className="rounded-lg border border-amber-300 dark:border-amber-700/80 bg-amber-50 dark:bg-amber-950/50 p-2.5">
+                    <div className="rounded-[2px] border border-amber-300 dark:border-amber-700/80 bg-amber-50 dark:bg-amber-950/50 p-2.5">
                       <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-900 dark:text-amber-200">
                         <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                         {diff.newOrphans.length} Annotated Item(s) Will Move to Archived Orphans
@@ -319,11 +319,11 @@ export function SnapImportModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 px-5 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800 bg-[#f3f5f8] dark:bg-[#090d14]/60 px-5 py-3">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
+            className="rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
           >
             Cancel
           </button>
@@ -331,7 +331,7 @@ export function SnapImportModal({
             type="button"
             disabled={!parsed}
             onClick={handleApply}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 dark:bg-sky-500 px-4 py-1.5 text-xs font-semibold text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-400 disabled:opacity-40 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-[2px] bg-sky-600 dark:bg-sky-500 px-4 py-1.5 text-xs font-semibold text-white dark:text-slate-950 hover:bg-sky-700 dark:hover:bg-sky-400 disabled:opacity-40 cursor-pointer"
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
             Apply Snapshot Merge

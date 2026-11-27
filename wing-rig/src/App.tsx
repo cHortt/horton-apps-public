@@ -35,7 +35,7 @@ export function App() {
   const auditAlertCount = store.auditIssues.filter((i) => i.severity !== 'info').length;
 
   return (
-    <div className="flex h-full flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="flex h-full flex-col bg-[#f3f5f8] text-slate-900 dark:bg-[#090d14] dark:text-slate-100">
       <TopBar
         rig={store.rig}
         editMode={store.editMode}

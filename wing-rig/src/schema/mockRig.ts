@@ -319,7 +319,7 @@ export function createMockRig(): RigDocument {
         rawName: 'Midas DL32',
         model: 'Midas DL32 (32×16)',
         zone: 'Stage',
-        position: { x: 40, y: 80 },
+        position: { x: 40, y: 60 },
         sourceOrigin: 'manual',
         portGroups: [
           {
@@ -347,7 +347,7 @@ export function createMockRig(): RigDocument {
         rawName: 'Wireless Mic Rack',
         model: 'Shure ULX-D Quad × 3',
         zone: 'Stage Rack',
-        position: { x: 40, y: 360 },
+        position: { x: 40, y: 385 },
         sourceOrigin: 'manual',
         portGroups: [
           {
@@ -429,7 +429,7 @@ export function createMockRig(): RigDocument {
         rawName: 'IEM Rack',
         model: 'Shure PSM900 × 4 Stereo',
         zone: 'Stage Rack',
-        position: { x: 420, y: 455 },
+        position: { x: 420, y: 505 },
         sourceOrigin: 'manual',
         portGroups: [
           {
@@ -503,7 +503,7 @@ export function createMockRig(): RigDocument {
         rawName: 'Media PC',
         model: 'ProPresenter / Dante / USB',
         zone: 'FOH Booth',
-        position: { x: 850, y: 455 },
+        position: { x: 850, y: 505 },
         sourceOrigin: 'manual',
         portGroups: [
           {
@@ -523,7 +523,7 @@ export function createMockRig(): RigDocument {
         rawName: 'PA Amp Rack',
         model: 'System DSP + Mains/Subs',
         zone: 'Amp Vault',
-        position: { x: 1230, y: 185 },
+        position: { x: 1265, y: 185 },
         sourceOrigin: 'manual',
         portGroups: [
           {
