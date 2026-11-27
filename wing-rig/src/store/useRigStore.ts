@@ -29,6 +29,11 @@ import {
   loadAllBaselines,
   saveBaselineRecord,
 } from './snapBaselineDb';
+import {
+  decodeRigPayload,
+  parseShareModeFromLocation,
+  type ShareModeInfo,
+} from './shareLink';
 
 // Strict applet isolation: all localStorage keys MUST be prefixed with "wing-rig:"
 export const STORAGE_KEY_RIG = 'wing-rig:document:v1';
@@ -42,6 +47,16 @@ export type SelectionState =
   | null;
 
 export type AppViewMode = 'canvas' | 'patch' | 'print';
+
+function readCurrentShareMode(): ShareModeInfo {
+  if (typeof window === 'undefined') {
+    return { lockedReadOnly: false, source: 'none', encodedPayload: null };
+  }
+  return parseShareModeFromLocation({
+    search: window.location.search,
+    hash: window.location.hash,
+  });
+}
 
 function loadInitialRig(): RigDocument {
   if (typeof window === 'undefined') return createMockRig();
@@ -136,14 +151,53 @@ export function writeInspectorCollapsed(collapsed: boolean): void {
 }
 
 export function useRigStore() {
-  const [rig, setRig] = useState<RigDocument>(loadInitialRig);
+  const [shareMode, setShareMode] = useState<ShareModeInfo>(readCurrentShareMode);
+  const lockedReadOnly = shareMode.lockedReadOnly;
+
+  const [rig, setRig] = useState<RigDocument>(() =>
+    shareMode.source === 'embedded' ? createMockRig() : loadInitialRig(),
+  );
+  const [rigOrigin, setRigOrigin] = useState<'local' | 'embedded'>(
+    shareMode.source === 'embedded' ? 'embedded' : 'local',
+  );
+  const [sharedLoading, setSharedLoading] = useState<boolean>(shareMode.source === 'embedded');
+  const [sharedLoadError, setSharedLoadError] = useState<string | null>(null);
+
   // Volunteer-First UX: always default to Read-Only Mode on startup
-  const [editMode, setEditMode] = useState<boolean>(false);
-  const [patchUnlocked, setPatchUnlocked] = useState<boolean>(false);
+  const [editModeState, setEditModeState] = useState<boolean>(false);
+  const [patchUnlockedState, setPatchUnlockedState] = useState<boolean>(false);
   const [inspectorCollapsed, setInspectorCollapsedState] = useState<boolean>(readInspectorCollapsed);
   const [selection, setSelection] = useState<SelectionState>(null);
   const [trace, setTrace] = useState<TraceResult | null>(null);
-  const [view, setView] = useState<AppViewMode>('canvas');
+  const [viewState, setViewState] = useState<AppViewMode>('canvas');
+
+  const editMode = lockedReadOnly ? false : editModeState;
+  const patchUnlocked = lockedReadOnly ? false : patchUnlockedState;
+  const view: AppViewMode = lockedReadOnly && viewState === 'patch' ? 'canvas' : viewState;
+
+  const setEditMode = useCallback(
+    (next: boolean) => {
+      if (lockedReadOnly) return;
+      setEditModeState(next);
+    },
+    [lockedReadOnly],
+  );
+
+  const setPatchUnlocked = useCallback(
+    (next: boolean) => {
+      if (lockedReadOnly) return;
+      setPatchUnlockedState(next);
+    },
+    [lockedReadOnly],
+  );
+
+  const setView = useCallback(
+    (next: AppViewMode) => {
+      if (lockedReadOnly && next === 'patch') return;
+      setViewState(next);
+    },
+    [lockedReadOnly],
+  );
 
   const setInspectorCollapsed = useCallback((collapsed: boolean) => {
     setInspectorCollapsedState(collapsed);
@@ -160,11 +214,76 @@ export function useRigStore() {
 
   // Raw lossless .snap baselines (persisted in IndexedDB wing-rig:snapshots:v1)
   const [baselines, setBaselines] = useState<Record<string, ConsoleBaselineRecord>>({});
-  const [stagedPatches, setStagedPatches] = useState<StagedPatchEntry[]>(loadInitialStaged);
-  const [linkConfig, setLinkConfig] = useState<ConsoleLinkConfig>(() => loadInitialLinkConfig(rig));
+  const [stagedPatches, setStagedPatches] = useState<StagedPatchEntry[]>(() =>
+    shareMode.lockedReadOnly ? [] : loadInitialStaged(),
+  );
+  const [linkConfig, setLinkConfig] = useState<ConsoleLinkConfig>(() =>
+    shareMode.source === 'embedded' ? inferConsoleLinkConfig(rig) : loadInitialLinkConfig(rig),
+  );
 
-  // Hydrate raw .snap baselines from IndexedDB on mount
+  // React to URL hash/query navigation (e.g., opening or leaving a #view= link)
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const syncShareMode = () => {
+      const next = readCurrentShareMode();
+      setShareMode(next);
+      if (next.source !== 'embedded') {
+        const localRig = loadInitialRig();
+        setRig(localRig);
+        setRigOrigin('local');
+        setStagedPatches(next.lockedReadOnly ? [] : loadInitialStaged());
+        setLinkConfig(loadInitialLinkConfig(localRig));
+        setSelection(null);
+        setTrace(null);
+      }
+    };
+    window.addEventListener('hashchange', syncShareMode);
+    window.addEventListener('popstate', syncShareMode);
+    return () => {
+      window.removeEventListener('hashchange', syncShareMode);
+      window.removeEventListener('popstate', syncShareMode);
+    };
+  }, []);
+
+  // Decode embedded #view=... shared rig strictly in memory (never touches localStorage)
+  useEffect(() => {
+    if (shareMode.source !== 'embedded') {
+      setSharedLoading(false);
+      setSharedLoadError(null);
+      return;
+    }
+
+    let active = true;
+    setRigOrigin('embedded');
+    setSharedLoading(true);
+    setSharedLoadError(null);
+    setEditModeState(false);
+    setPatchUnlockedState(false);
+    setStagedPatches([]);
+    setSelection(null);
+    setTrace(null);
+
+    void decodeRigPayload(shareMode.encodedPayload).then((result) => {
+      if (!active) return;
+      if (result.ok) {
+        setRig(result.rig);
+        setRigOrigin('embedded');
+        setLinkConfig(inferConsoleLinkConfig(result.rig));
+        setSharedLoadError(null);
+      } else {
+        setSharedLoadError(result.error);
+      }
+      setSharedLoading(false);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [shareMode]);
+
+  // Hydrate raw .snap baselines from IndexedDB on mount (only in editable main mode)
+  useEffect(() => {
+    if (lockedReadOnly) return;
     let active = true;
     void loadAllBaselines().then((loaded) => {
       if (active) setBaselines(loaded);
@@ -172,31 +291,34 @@ export function useRigStore() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [lockedReadOnly]);
 
   useEffect(() => {
+    if (lockedReadOnly || rigOrigin !== 'local') return;
     try {
       window.localStorage.setItem(STORAGE_KEY_RIG, JSON.stringify(rig));
     } catch {
       // Ignore storage quota errors in restricted browsing modes
     }
-  }, [rig]);
+  }, [rig, lockedReadOnly, rigOrigin]);
 
   useEffect(() => {
+    if (lockedReadOnly || rigOrigin !== 'local') return;
     try {
       window.localStorage.setItem(STORAGE_KEY_STAGED, JSON.stringify(stagedPatches));
     } catch {
       // Ignore storage errors
     }
-  }, [stagedPatches]);
+  }, [stagedPatches, lockedReadOnly, rigOrigin]);
 
   useEffect(() => {
+    if (lockedReadOnly || rigOrigin !== 'local') return;
     try {
       window.localStorage.setItem(STORAGE_KEY_LINK, JSON.stringify(linkConfig));
     } catch {
       // Ignore storage errors
     }
-  }, [linkConfig]);
+  }, [linkConfig, lockedReadOnly, rigOrigin]);
 
   // Keep linkConfig valid if consoles are added/removed
   useEffect(() => {
@@ -315,69 +437,86 @@ export function useRigStore() {
     setTrace(null);
   }, []);
 
-  const updateRigMeta = useCallback((patch: Partial<Pick<RigDocument, 'name' | 'venue'>>) => {
-    setRig((prev) => ({
-      ...prev,
-      ...patch,
-      updatedAt: new Date().toISOString(),
-    }));
-  }, []);
+  const updateRigMeta = useCallback(
+    (patch: Partial<Pick<RigDocument, 'name' | 'venue'>>) => {
+      if (lockedReadOnly) return;
+      setRig((prev) => ({
+        ...prev,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      }));
+    },
+    [lockedReadOnly],
+  );
 
-  const updateNodePosition = useCallback((nodeId: string, position: Point2D) => {
-    const rounded = { x: Math.round(position.x), y: Math.round(position.y) };
-    setRig((prev) => ({
-      ...prev,
-      updatedAt: new Date().toISOString(),
-      nodes: prev.nodes.map((n) => (n.id === nodeId ? { ...n, position: rounded } : n)),
-      annotations: {
-        ...prev.annotations,
-        nodes: {
-          ...prev.annotations.nodes,
-          [nodeId]: {
-            ...prev.annotations.nodes[nodeId],
-            position: rounded,
+  const updateNodePosition = useCallback(
+    (nodeId: string, position: Point2D) => {
+      if (lockedReadOnly) return;
+      const rounded = { x: Math.round(position.x), y: Math.round(position.y) };
+      setRig((prev) => ({
+        ...prev,
+        updatedAt: new Date().toISOString(),
+        nodes: prev.nodes.map((n) => (n.id === nodeId ? { ...n, position: rounded } : n)),
+        annotations: {
+          ...prev.annotations,
+          nodes: {
+            ...prev.annotations.nodes,
+            [nodeId]: {
+              ...prev.annotations.nodes[nodeId],
+              position: rounded,
+            },
           },
         },
-      },
-    }));
-  }, []);
+      }));
+    },
+    [lockedReadOnly],
+  );
 
-  const updateNodeAnnotation = useCallback((nodeId: string, patch: Partial<NodeAnnotation>) => {
-    setRig((prev) => ({
-      ...prev,
-      updatedAt: new Date().toISOString(),
-      annotations: {
-        ...prev.annotations,
-        nodes: {
-          ...prev.annotations.nodes,
-          [nodeId]: {
-            ...prev.annotations.nodes[nodeId],
-            ...patch,
+  const updateNodeAnnotation = useCallback(
+    (nodeId: string, patch: Partial<NodeAnnotation>) => {
+      if (lockedReadOnly) return;
+      setRig((prev) => ({
+        ...prev,
+        updatedAt: new Date().toISOString(),
+        annotations: {
+          ...prev.annotations,
+          nodes: {
+            ...prev.annotations.nodes,
+            [nodeId]: {
+              ...prev.annotations.nodes[nodeId],
+              ...patch,
+            },
           },
         },
-      },
-    }));
-  }, []);
+      }));
+    },
+    [lockedReadOnly],
+  );
 
-  const updateTrunkAnnotation = useCallback((trunkId: string, patch: Partial<TrunkAnnotation>) => {
-    setRig((prev) => ({
-      ...prev,
-      updatedAt: new Date().toISOString(),
-      annotations: {
-        ...prev.annotations,
-        trunks: {
-          ...prev.annotations.trunks,
-          [trunkId]: {
-            ...prev.annotations.trunks[trunkId],
-            ...patch,
+  const updateTrunkAnnotation = useCallback(
+    (trunkId: string, patch: Partial<TrunkAnnotation>) => {
+      if (lockedReadOnly) return;
+      setRig((prev) => ({
+        ...prev,
+        updatedAt: new Date().toISOString(),
+        annotations: {
+          ...prev.annotations,
+          trunks: {
+            ...prev.annotations.trunks,
+            [trunkId]: {
+              ...prev.annotations.trunks[trunkId],
+              ...patch,
+            },
           },
         },
-      },
-    }));
-  }, []);
+      }));
+    },
+    [lockedReadOnly],
+  );
 
   const updateChannelAnnotation = useCallback(
     (channelId: string, patch: Partial<ChannelAnnotation>) => {
+      if (lockedReadOnly) return;
       setRig((prev) => ({
         ...prev,
         updatedAt: new Date().toISOString(),
@@ -393,97 +532,122 @@ export function useRigStore() {
         },
       }));
     },
-    [],
+    [lockedReadOnly],
   );
 
-  const updateBusAnnotation = useCallback((busId: string, patch: Partial<BusAnnotation>) => {
-    setRig((prev) => ({
-      ...prev,
-      updatedAt: new Date().toISOString(),
-      annotations: {
-        ...prev.annotations,
-        buses: {
-          ...prev.annotations.buses,
-          [busId]: {
-            ...prev.annotations.buses[busId],
-            ...patch,
+  const updateBusAnnotation = useCallback(
+    (busId: string, patch: Partial<BusAnnotation>) => {
+      if (lockedReadOnly) return;
+      setRig((prev) => ({
+        ...prev,
+        updatedAt: new Date().toISOString(),
+        annotations: {
+          ...prev.annotations,
+          buses: {
+            ...prev.annotations.buses,
+            [busId]: {
+              ...prev.annotations.buses[busId],
+              ...patch,
+            },
           },
         },
-      },
-    }));
-  }, []);
+      }));
+    },
+    [lockedReadOnly],
+  );
 
-  const dismissOrphan = useCallback((key: string) => {
-    setRig((prev) => ({
-      ...prev,
-      updatedAt: new Date().toISOString(),
-      annotations: {
-        ...prev.annotations,
-        orphaned: prev.annotations.orphaned.filter((o) => o.key !== key),
-      },
-    }));
-  }, []);
-
-  const addManualNode = useCallback((node: HardwareNode, friendlyName?: string, notes?: string) => {
-    setRig((prev) => ({
-      ...prev,
-      updatedAt: new Date().toISOString(),
-      nodes: [...prev.nodes, node],
-      annotations: {
-        ...prev.annotations,
-        nodes: {
-          ...prev.annotations.nodes,
-          ...(friendlyName || notes
-            ? { [node.id]: { friendlyName: friendlyName || undefined, notes: notes || undefined } }
-            : {}),
+  const dismissOrphan = useCallback(
+    (key: string) => {
+      if (lockedReadOnly) return;
+      setRig((prev) => ({
+        ...prev,
+        updatedAt: new Date().toISOString(),
+        annotations: {
+          ...prev.annotations,
+          orphaned: prev.annotations.orphaned.filter((o) => o.key !== key),
         },
-      },
-    }));
-    setSelection({ type: 'node', id: node.id });
-  }, []);
+      }));
+    },
+    [lockedReadOnly],
+  );
 
-  const deleteManualNode = useCallback((nodeId: string) => {
-    setRig((prev) => ({
-      ...prev,
-      updatedAt: new Date().toISOString(),
-      nodes: prev.nodes.filter((n) => n.id !== nodeId),
-      trunks: prev.trunks.filter((t) => t.sourceNodeId !== nodeId && t.targetNodeId !== nodeId),
-    }));
-    setSelection((cur) => (cur?.type === 'node' && cur.id === nodeId ? null : cur));
-    setTrace(null);
-  }, []);
-
-  const addManualTrunk = useCallback((trunk: TrunkConnection, cableTag?: string, notes?: string) => {
-    setRig((prev) => ({
-      ...prev,
-      updatedAt: new Date().toISOString(),
-      trunks: [...prev.trunks, trunk],
-      annotations: {
-        ...prev.annotations,
-        trunks: {
-          ...prev.annotations.trunks,
-          ...(cableTag || notes
-            ? { [trunk.id]: { cableTag: cableTag || undefined, notes: notes || undefined } }
-            : {}),
+  const addManualNode = useCallback(
+    (node: HardwareNode, friendlyName?: string, notes?: string) => {
+      if (lockedReadOnly) return;
+      setRig((prev) => ({
+        ...prev,
+        updatedAt: new Date().toISOString(),
+        nodes: [...prev.nodes, node],
+        annotations: {
+          ...prev.annotations,
+          nodes: {
+            ...prev.annotations.nodes,
+            ...(friendlyName || notes
+              ? { [node.id]: { friendlyName: friendlyName || undefined, notes: notes || undefined } }
+              : {}),
+          },
         },
-      },
-    }));
-    setSelection({ type: 'trunk', id: trunk.id });
-  }, []);
+      }));
+      setSelection({ type: 'node', id: node.id });
+    },
+    [lockedReadOnly],
+  );
 
-  const deleteManualTrunk = useCallback((trunkId: string) => {
-    setRig((prev) => ({
-      ...prev,
-      updatedAt: new Date().toISOString(),
-      trunks: prev.trunks.filter((t) => t.id !== trunkId),
-    }));
-    setSelection((cur) => (cur?.type === 'trunk' && cur.id === trunkId ? null : cur));
-    setTrace(null);
-  }, []);
+  const deleteManualNode = useCallback(
+    (nodeId: string) => {
+      if (lockedReadOnly) return;
+      setRig((prev) => ({
+        ...prev,
+        updatedAt: new Date().toISOString(),
+        nodes: prev.nodes.filter((n) => n.id !== nodeId),
+        trunks: prev.trunks.filter((t) => t.sourceNodeId !== nodeId && t.targetNodeId !== nodeId),
+      }));
+      setSelection((cur) => (cur?.type === 'node' && cur.id === nodeId ? null : cur));
+      setTrace(null);
+    },
+    [lockedReadOnly],
+  );
+
+  const addManualTrunk = useCallback(
+    (trunk: TrunkConnection, cableTag?: string, notes?: string) => {
+      if (lockedReadOnly) return;
+      setRig((prev) => ({
+        ...prev,
+        updatedAt: new Date().toISOString(),
+        trunks: [...prev.trunks, trunk],
+        annotations: {
+          ...prev.annotations,
+          trunks: {
+            ...prev.annotations.trunks,
+            ...(cableTag || notes
+              ? { [trunk.id]: { cableTag: cableTag || undefined, notes: notes || undefined } }
+              : {}),
+          },
+        },
+      }));
+      setSelection({ type: 'trunk', id: trunk.id });
+    },
+    [lockedReadOnly],
+  );
+
+  const deleteManualTrunk = useCallback(
+    (trunkId: string) => {
+      if (lockedReadOnly) return;
+      setRig((prev) => ({
+        ...prev,
+        updatedAt: new Date().toISOString(),
+        trunks: prev.trunks.filter((t) => t.id !== trunkId),
+      }));
+      setSelection((cur) => (cur?.type === 'trunk' && cur.id === trunkId ? null : cur));
+      setTrace(null);
+    },
+    [lockedReadOnly],
+  );
 
   const applySnapshot = useCallback(
     (parsed: ParsedWingSnapshot, targetConsoleId?: string, rawSnapJson?: string): SnapMergeDiff => {
       const merged = applySnapMerge(rig, parsed, targetConsoleId);
+      if (lockedReadOnly) return merged.diff;
       setRig(merged.rig);
       const resolvedId = merged.diff.targetConsoleNodeId;
       setSelection({ type: 'node', id: resolvedId });
@@ -509,37 +673,56 @@ export function useRigStore() {
 
       return merged.diff;
     },
-    [rig],
+    [rig, lockedReadOnly],
   );
 
   // Patch Studio staging & export actions
-  const stagePatches = useCallback((entries: StagedPatchEntry[]) => {
-    if (entries.length === 0) return;
-    setStagedPatches((prev) => [...prev, ...entries]);
-  }, []);
+  const stagePatches = useCallback(
+    (entries: StagedPatchEntry[]) => {
+      if (lockedReadOnly || entries.length === 0) return;
+      setStagedPatches((prev) => [...prev, ...entries]);
+    },
+    [lockedReadOnly],
+  );
 
-  const removeStagedPatch = useCallback((patchId: string) => {
-    setStagedPatches((prev) => prev.filter((p) => p.id !== patchId));
-  }, []);
+  const removeStagedPatch = useCallback(
+    (patchId: string) => {
+      if (lockedReadOnly) return;
+      setStagedPatches((prev) => prev.filter((p) => p.id !== patchId));
+    },
+    [lockedReadOnly],
+  );
 
   const undoLastStagedPatch = useCallback(() => {
+    if (lockedReadOnly) return;
     setStagedPatches((prev) => prev.slice(0, -1));
-  }, []);
+  }, [lockedReadOnly]);
 
-  const discardStagedPatches = useCallback((consoleNodeId?: string) => {
-    if (!consoleNodeId) {
-      setStagedPatches([]);
-    } else {
-      setStagedPatches((prev) => prev.filter((p) => p.consoleNodeId !== consoleNodeId));
-    }
-  }, []);
+  const discardStagedPatches = useCallback(
+    (consoleNodeId?: string) => {
+      if (lockedReadOnly) return;
+      if (!consoleNodeId) {
+        setStagedPatches([]);
+      } else {
+        setStagedPatches((prev) => prev.filter((p) => p.consoleNodeId !== consoleNodeId));
+      }
+    },
+    [lockedReadOnly],
+  );
 
-  const updateLinkConfig = useCallback((patch: Partial<ConsoleLinkConfig>) => {
-    setLinkConfig((prev) => ({ ...prev, ...patch }));
-  }, []);
+  const updateLinkConfig = useCallback(
+    (patch: Partial<ConsoleLinkConfig>) => {
+      if (lockedReadOnly) return;
+      setLinkConfig((prev) => ({ ...prev, ...patch }));
+    },
+    [lockedReadOnly],
+  );
 
   const exportPatchedSnap = useCallback(
     (consoleNodeId: string, customFileName?: string): { ok: true; fileName: string } | { ok: false; error: string } => {
+      if (lockedReadOnly) {
+        return { ok: false, error: 'Read-only shared view cannot export .snap files.' };
+      }
       const baseline = baselines[consoleNodeId];
       if (!baseline) {
         return { ok: false, error: 'No .snap baseline loaded for this console.' };
@@ -567,11 +750,12 @@ export function useRigStore() {
         };
       }
     },
-    [baselines, stagedPatches],
+    [baselines, stagedPatches, lockedReadOnly],
   );
 
   const commitConsoleBaseline = useCallback(
     (consoleNodeId: string, newFileName?: string): boolean => {
+      if (lockedReadOnly) return false;
       const baseline = baselines[consoleNodeId];
       if (!baseline) return false;
       const consoleOps = stagedPatches
@@ -603,44 +787,55 @@ export function useRigStore() {
       setStagedPatches((prev) => prev.filter((p) => p.consoleNodeId !== consoleNodeId));
       return true;
     },
-    [baselines, stagedPatches, rig],
+    [baselines, stagedPatches, rig, lockedReadOnly],
   );
 
-  const deleteConsoleBaseline = useCallback((consoleNodeId: string) => {
-    setBaselines((prev) => {
-      const next = { ...prev };
-      delete next[consoleNodeId];
-      return next;
-    });
-    setStagedPatches((prev) => prev.filter((p) => p.consoleNodeId !== consoleNodeId));
-    void deleteBaselineRecord(consoleNodeId);
-  }, []);
+  const deleteConsoleBaseline = useCallback(
+    (consoleNodeId: string) => {
+      if (lockedReadOnly) return;
+      setBaselines((prev) => {
+        const next = { ...prev };
+        delete next[consoleNodeId];
+        return next;
+      });
+      setStagedPatches((prev) => prev.filter((p) => p.consoleNodeId !== consoleNodeId));
+      void deleteBaselineRecord(consoleNodeId);
+    },
+    [lockedReadOnly],
+  );
 
-  const importRigJson = useCallback((rawText: string): { ok: true } | { ok: false; error: string } => {
-    try {
-      const parsed = JSON.parse(rawText) as unknown;
-      const validation = validateRigDocument(parsed);
-      if (!validation.valid) {
+  const importRigJson = useCallback(
+    (rawText: string): { ok: true } | { ok: false; error: string } => {
+      if (lockedReadOnly) {
+        return { ok: false, error: 'Read-only shared view cannot import .rig.json files.' };
+      }
+      try {
+        const parsed = JSON.parse(rawText) as unknown;
+        const validation = validateRigDocument(parsed);
+        if (!validation.valid) {
+          return {
+            ok: false,
+            error: validation.issues.map((i) => `${i.path}: ${i.message}`).join('; '),
+          };
+        }
+        const doc = parsed as RigDocument;
+        setRig(doc);
+        setLinkConfig(inferConsoleLinkConfig(doc));
+        setSelection(null);
+        setTrace(null);
+        return { ok: true };
+      } catch (err) {
         return {
           ok: false,
-          error: validation.issues.map((i) => `${i.path}: ${i.message}`).join('; '),
+          error: err instanceof Error ? err.message : 'Invalid JSON file.',
         };
       }
-      const doc = parsed as RigDocument;
-      setRig(doc);
-      setLinkConfig(inferConsoleLinkConfig(doc));
-      setSelection(null);
-      setTrace(null);
-      return { ok: true };
-    } catch (err) {
-      return {
-        ok: false,
-        error: err instanceof Error ? err.message : 'Invalid JSON file.',
-      };
-    }
-  }, []);
+    },
+    [lockedReadOnly],
+  );
 
   const exportRigJson = useCallback(() => {
+    if (lockedReadOnly) return;
     const blob = new Blob([JSON.stringify(effectiveRig, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -652,9 +847,10 @@ export function useRigStore() {
     a.download = `${safeName || 'wing-rig'}.rig.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [effectiveRig]);
+  }, [effectiveRig, lockedReadOnly]);
 
   const resetToDemoRig = useCallback(() => {
+    if (lockedReadOnly) return;
     const demo = createMockRig();
     setRig(demo);
     setLinkConfig(inferConsoleLinkConfig(demo));
@@ -663,11 +859,15 @@ export function useRigStore() {
     void clearAllBaselines();
     setSelection(null);
     setTrace(null);
-  }, []);
+  }, [lockedReadOnly]);
 
   return {
     rig: effectiveRig,
     committedRig: rig,
+    lockedReadOnly,
+    shareSource: shareMode.source,
+    sharedLoading,
+    sharedLoadError,
     editMode,
     setEditMode,
     patchUnlocked,

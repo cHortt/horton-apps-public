@@ -55,4 +55,5 @@ Verified directly against `wing-rig/fixtures/snapshots/SHC-Monitor.snap` (`type:
 
 - Browser `localStorage` keys are strictly prefixed with `wing-rig:`: `wing-rig:document:v1`, `wing-rig:prefs:v1`, `wing-rig:staged-patches:v1`, and `wing-rig:console-link:v1`.
 - Raw `.snap` baselines (~900 KB each) for lossless Patch Studio editing & export are stored in an isolated IndexedDB database (`wing-rig:snapshots:v1`).
+- Read-Only Share links (`#view=v1.<deflate-raw+base64url>`) embed a compressed `RigDocument` snapshot directly in the URL fragment with zero network uploads, decode strictly in memory without mutating `localStorage`, and lock out all editing/import/Patch Studio controls. `?mode=view` (or `?readonly=1`) locks the app into the same Read-Only Viewer Mode for booth/kiosk displays.
 - Vite builds with `base: './'` so all static assets resolve cleanly under `/horton-apps-public/wing-rig/`.

@@ -10,6 +10,7 @@ import {
   Plus,
   Printer,
   Search,
+  Share2,
   Sun,
   Unlock,
   Upload,
@@ -19,9 +20,12 @@ import {
 import type { RigDocument, SearchHit } from '../schema/rig';
 import { searchRig } from '../schema/helpers';
 import type { AppViewMode } from '../store/useRigStore';
+import type { ShareSource } from '../store/shareLink';
 
 interface TopBarProps {
   rig: RigDocument;
+  lockedReadOnly: boolean;
+  shareSource: ShareSource;
   editMode: boolean;
   view: AppViewMode;
   isDark: boolean;
@@ -35,6 +39,7 @@ interface TopBarProps {
   onToggleView: (view: AppViewMode) => void;
   onOpenSnapImport: () => void;
   onOpenAddGear: () => void;
+  onOpenShare: () => void;
   onExportRigJson: () => void;
   onImportRigJson: (text: string) => { ok: true } | { ok: false; error: string };
   onSelectSearchHit: (hit: SearchHit) => void;
@@ -42,6 +47,8 @@ interface TopBarProps {
 
 export function TopBar({
   rig,
+  lockedReadOnly,
+  shareSource,
   editMode,
   view,
   isDark,
@@ -55,6 +62,7 @@ export function TopBar({
   onToggleView,
   onOpenSnapImport,
   onOpenAddGear,
+  onOpenShare,
   onExportRigJson,
   onImportRigJson,
   onSelectSearchHit,
@@ -109,7 +117,7 @@ export function TopBar({
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            {editMode ? (
+            {!lockedReadOnly && editMode ? (
               <input
                 type="text"
                 aria-label="Rig name"
@@ -204,100 +212,122 @@ export function TopBar({
 
       {/* Right: Mode Toggle & Actions */}
       <div className="flex items-center gap-1.5 flex-wrap">
-        {view === 'canvas' && (
+        {lockedReadOnly ? (
+          <span
+            title="This view is locked to Read-Only mode. You can browse, search, trace signals, and print."
+            className="inline-flex items-center gap-1.5 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 font-mono text-[11px] font-semibold text-slate-700 dark:text-slate-200 select-none"
+          >
+            <Lock className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+            <span>{shareSource === 'embedded' ? 'Shared · Read-Only' : 'Read-Only View'}</span>
+          </span>
+        ) : (
           <>
-            <button
-              type="button"
-              onClick={onToggleEditMode}
-              title={
-                editMode
-                  ? 'Editing unlocked — click to return to safe Read-Only mode'
-                  : 'Read-Only Mode (volunteer-safe) — click to unlock layout & label editing'
-              }
-              className={`inline-flex items-center gap-1.5 rounded-[2px] border px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
-                editMode
-                  ? 'border-amber-400 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:border-amber-600/70 dark:bg-amber-950/70 dark:text-amber-200 dark:hover:bg-amber-950'
-                  : 'border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              {editMode ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-              <span>{editMode ? 'Edit Mode' : 'Read-Only'}</span>
-            </button>
+            {view === 'canvas' && (
+              <>
+                <button
+                  type="button"
+                  onClick={onToggleEditMode}
+                  title={
+                    editMode
+                      ? 'Editing unlocked — click to return to safe Read-Only mode'
+                      : 'Read-Only Mode (volunteer-safe) — click to unlock layout & label editing'
+                  }
+                  className={`inline-flex items-center gap-1.5 rounded-[2px] border px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                    editMode
+                      ? 'border-amber-400 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:border-amber-600/70 dark:bg-amber-950/70 dark:text-amber-200 dark:hover:bg-amber-950'
+                      : 'border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {editMode ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                  <span>{editMode ? 'Edit Mode' : 'Read-Only'}</span>
+                </button>
 
-            {editMode && (
-              <button
-                type="button"
-                onClick={onOpenAddGear}
-                className="inline-flex items-center gap-1 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Add Gear</span>
-              </button>
+                {editMode && (
+                  <button
+                    type="button"
+                    onClick={onOpenAddGear}
+                    className="inline-flex items-center gap-1 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Add Gear</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={onOpenSnapImport}
+                  className="inline-flex items-center gap-1.5 rounded-[2px] bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-400 dark:text-slate-950 cursor-pointer"
+                >
+                  <FileUp className="w-3.5 h-3.5" />
+                  <span>Import .snap</span>
+                </button>
+
+                <input
+                  ref={rigFileInputRef}
+                  type="file"
+                  accept=".json,.rig.json"
+                  onChange={handleRigFileChange}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  title="Import portable .rig.json"
+                  onClick={() => rigFileInputRef.current?.click()}
+                  className="inline-flex items-center gap-1 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/80 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span className="hidden xl:inline font-mono text-[11px]">.rig.json</span>
+                </button>
+                <button
+                  type="button"
+                  title="Export portable .rig.json"
+                  onClick={onExportRigJson}
+                  className="inline-flex items-center gap-1 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/80 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden xl:inline">Export</span>
+                </button>
+              </>
             )}
 
             <button
               type="button"
-              onClick={onOpenSnapImport}
-              className="inline-flex items-center gap-1.5 rounded-[2px] bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-400 dark:text-slate-950 cursor-pointer"
+              onClick={() => onToggleView(view === 'patch' ? 'canvas' : 'patch')}
+              title="Open WING Patch Studio to edit sources, splits, mix buses, verify paths, and export .snap files"
+              className={`inline-flex items-center gap-1.5 rounded-[2px] border px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                view === 'patch'
+                  ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800 dark:border-sky-400 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400'
+                  : stagedCount > 0
+                    ? 'border-sky-500 bg-sky-50 text-sky-900 hover:bg-sky-100 dark:border-sky-600 dark:bg-sky-950/60 dark:text-sky-200 dark:hover:bg-sky-950'
+                    : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100 dark:hover:bg-slate-700'
+              }`}
             >
-              <FileUp className="w-3.5 h-3.5" />
-              <span>Import .snap</span>
+              <Wrench className="w-3.5 h-3.5" />
+              <span>{view === 'patch' ? 'Schematic' : 'Patch Studio'}</span>
+              {stagedCount > 0 && (
+                <span className="rounded-[1px] bg-sky-600 dark:bg-sky-400 px-1.5 py-0 font-mono text-[10px] font-bold text-white dark:text-slate-950">
+                  {stagedCount}
+                </span>
+              )}
+              {stagedCount === 0 && auditAlertCount > 0 && view !== 'patch' && (
+                <span
+                  title={`${auditAlertCount} path verifier alert(s)`}
+                  className="h-2 w-2 rounded-full bg-amber-500"
+                />
+              )}
             </button>
 
-            <input
-              ref={rigFileInputRef}
-              type="file"
-              accept=".json,.rig.json"
-              onChange={handleRigFileChange}
-              className="hidden"
-            />
             <button
               type="button"
-              title="Import portable .rig.json"
-              onClick={() => rigFileInputRef.current?.click()}
-              className="inline-flex items-center gap-1 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/80 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
+              onClick={onOpenShare}
+              title="Share a locked Read-Only link to your current rig"
+              className="inline-flex items-center gap-1.5 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 hover:border-sky-500 hover:bg-sky-50/60 dark:hover:border-sky-500 dark:hover:bg-sky-950/40 transition-colors cursor-pointer"
             >
-              <Upload className="w-3.5 h-3.5" />
-              <span className="hidden xl:inline font-mono text-[11px]">.rig.json</span>
-            </button>
-            <button
-              type="button"
-              title="Export portable .rig.json"
-              onClick={onExportRigJson}
-              className="inline-flex items-center gap-1 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/80 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden xl:inline">Export</span>
+              <Share2 className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+              <span>Share</span>
             </button>
           </>
         )}
-
-        <button
-          type="button"
-          onClick={() => onToggleView(view === 'patch' ? 'canvas' : 'patch')}
-          title="Open WING Patch Studio to edit sources, splits, mix buses, verify paths, and export .snap files"
-          className={`inline-flex items-center gap-1.5 rounded-[2px] border px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
-            view === 'patch'
-              ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800 dark:border-sky-400 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400'
-              : stagedCount > 0
-                ? 'border-sky-500 bg-sky-50 text-sky-900 hover:bg-sky-100 dark:border-sky-600 dark:bg-sky-950/60 dark:text-sky-200 dark:hover:bg-sky-950'
-                : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100 dark:hover:bg-slate-700'
-          }`}
-        >
-          <Wrench className="w-3.5 h-3.5" />
-          <span>{view === 'patch' ? 'Schematic' : 'Patch Studio'}</span>
-          {stagedCount > 0 && (
-            <span className="rounded-[1px] bg-sky-600 dark:bg-sky-400 px-1.5 py-0 font-mono text-[10px] font-bold text-white dark:text-slate-950">
-              {stagedCount}
-            </span>
-          )}
-          {stagedCount === 0 && auditAlertCount > 0 && view !== 'patch' && (
-            <span
-              title={`${auditAlertCount} path verifier alert(s)`}
-              className="h-2 w-2 rounded-full bg-amber-500"
-            />
-          )}
-        </button>
 
         <button
           type="button"
