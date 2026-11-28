@@ -731,3 +731,147 @@ export function countRigPhantomChannels(rig: RigDocument): number {
   }
   return count;
 }
+
+export interface StripUpstreamOrigin {
+  directSource: string;
+  physicalOrigin?: string;
+  chainLabel: string;
+  cableTag?: string;
+  phantom48v?: boolean;
+  gainDb?: number;
+  mode?: 'M' | 'ST';
+}
+
+/**
+ * Resolves both the console's direct input patch (e.g. `C.14`) and its physical origin
+ * across inter-console AES50 splits / stagebox trunks (e.g. `DL32 A.14 -> Split C.14`).
+ */
+export function resolveStripUpstreamOrigin(
+  rig: RigDocument,
+  consoleNode: HardwareNode,
+  strip: ConsoleChannelStrip,
+): StripUpstreamOrigin {
+  const directSource =
+    !strip.sourceGroup || strip.sourceGroup === 'OFF' || strip.sourceSlot <= 0
+      ? 'OFF'
+      : `${strip.sourceGroup}.${strip.sourceSlot}`;
+
+  const direct = findStripSourceChannel(consoleNode, strip);
+  if (directSource === 'OFF') {
+    return { directSource: 'OFF', chainLabel: 'Unassigned' };
+  }
+
+  let cableTag = direct ? rig.annotations.channels[direct.channel.id]?.cableTag : undefined;
+  let phantom48v = direct?.channel.phantom48v;
+  let gainDb = direct?.channel.gainDb;
+  let mode = direct?.channel.mode;
+
+  // Look for an incoming trunk feeding this console's sourceGroup at sourceSlot
+  const incomingTrunk = rig.trunks.find(
+    (t) =>
+      (t.targetNodeId === consoleNode.id && t.targetPortGroup === strip.sourceGroup) ||
+      (t.sourceNodeId === consoleNode.id && t.sourcePortGroup === strip.sourceGroup),
+  );
+
+  if (incomingTrunk) {
+    const peerId =
+      incomingTrunk.targetNodeId === consoleNode.id
+        ? incomingTrunk.sourceNodeId
+        : incomingTrunk.targetNodeId;
+    const peerPort =
+      incomingTrunk.targetNodeId === consoleNode.id
+        ? incomingTrunk.sourcePortGroup
+        : incomingTrunk.targetPortGroup;
+    const peerNode = rig.nodes.find((n) => n.id === peerId);
+
+    if (peerNode) {
+      const peerName = compactNodeTabLabel(resolveNodeName(rig, peerNode));
+
+      // If peer is another console sending a pass-through split (e.g., Stage Out C.14 <- In A.14)
+      if (peerNode.kind === 'console') {
+        const peerOutPg = peerNode.portGroups.find(
+          (g) => g.direction === 'output' && g.code === peerPort,
+        );
+        const peerOutCh = peerOutPg?.channels.find((c) => c.slot === strip.sourceSlot);
+        if (peerOutCh?.passthroughFrom && peerOutCh.passthroughFrom.nodeId === peerNode.id) {
+          const origGroup = peerOutCh.passthroughFrom.group;
+          const origSlot = peerOutCh.passthroughFrom.slot;
+          const origInPg = peerNode.portGroups.find(
+            (g) => g.direction !== 'output' && g.code === origGroup,
+          );
+          const origInCh = origInPg?.channels.find((c) => c.slot === origSlot);
+          if (origInCh) {
+            if (phantom48v === undefined) phantom48v = origInCh.phantom48v;
+            if (gainDb === undefined) gainDb = origInCh.gainDb;
+            if (!mode) mode = origInCh.mode;
+            if (!cableTag) cableTag = rig.annotations.channels[origInCh.id]?.cableTag;
+          }
+          // Check if origGroup itself comes from a stagebox/external device
+          const stageTrunk = rig.trunks.find(
+            (t) =>
+              (t.targetNodeId === peerNode.id && t.targetPortGroup === origGroup) ||
+              (t.sourceNodeId === peerNode.id && t.sourcePortGroup === origGroup),
+          );
+          const stagePeerId = stageTrunk
+            ? stageTrunk.targetNodeId === peerNode.id
+              ? stageTrunk.sourceNodeId
+              : stageTrunk.targetNodeId
+            : undefined;
+          const stagePeer = stagePeerId ? rig.nodes.find((n) => n.id === stagePeerId) : undefined;
+          const originNodeLabel = stagePeer
+            ? compactNodeTabLabel(resolveNodeName(rig, stagePeer))
+            : peerName;
+          const physicalOrigin = `${originNodeLabel} ${origGroup}.${origSlot}`;
+          return {
+            directSource,
+            physicalOrigin,
+            chainLabel: `${physicalOrigin} → ${directSource}`,
+            cableTag,
+            phantom48v,
+            gainDb,
+            mode,
+          };
+        }
+
+        const physicalOrigin = `${peerName} ${peerPort}.${strip.sourceSlot}`;
+        return {
+          directSource,
+          physicalOrigin,
+          chainLabel: `${physicalOrigin} → ${directSource}`,
+          cableTag,
+          phantom48v,
+          gainDb,
+          mode,
+        };
+      }
+
+      // Peer is a physical stagebox / wireless / media rack
+      const peerPg = peerNode.portGroups.find((g) => g.code === peerPort);
+      const peerCh = peerPg?.channels.find((c) => c.slot === strip.sourceSlot);
+      if (peerCh && !cableTag) {
+        cableTag = rig.annotations.channels[peerCh.id]?.cableTag;
+      }
+      const physicalOrigin = `${peerName} ${peerPort}.${strip.sourceSlot}`;
+      return {
+        directSource,
+        physicalOrigin,
+        chainLabel: `${physicalOrigin}`,
+        cableTag,
+        phantom48v,
+        gainDb,
+        mode,
+      };
+    }
+  }
+
+  return {
+    directSource,
+    physicalOrigin: `${compactNodeTabLabel(resolveNodeName(rig, consoleNode))} ${directSource}`,
+    chainLabel: directSource,
+    cableTag,
+    phantom48v,
+    gainDb,
+    mode,
+  };
+}
+

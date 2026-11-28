@@ -3,7 +3,9 @@ import {
   ArrowLeft,
   Download,
   FileUp,
+  FolderOpen,
   GitBranch,
+  GitCompare,
   Lock,
   Moon,
   MoreHorizontal,
@@ -13,6 +15,7 @@ import {
   Printer,
   Search,
   Share2,
+  Sliders,
   Sun,
   Unlock,
   Upload,
@@ -34,11 +37,14 @@ interface TopBarProps {
   inspectorCollapsed: boolean;
   stagedCount: number;
   auditAlertCount: number;
+  diffCount: number;
+  libraryCount: number;
   onToggleTheme: () => void;
   onToggleInspector: () => void;
   onToggleEditMode: () => void;
   onUpdateRigName: (name: string) => void;
   onToggleView: (view: AppViewMode) => void;
+  onOpenLibrary: () => void;
   onOpenSnapImport: () => void;
   onOpenAddGear: () => void;
   onOpenShare: () => void;
@@ -57,11 +63,14 @@ export function TopBar({
   inspectorCollapsed,
   stagedCount,
   auditAlertCount,
+  diffCount,
+  libraryCount,
   onToggleTheme,
   onToggleInspector,
   onToggleEditMode,
   onUpdateRigName,
   onToggleView,
+  onOpenLibrary,
   onOpenSnapImport,
   onOpenAddGear,
   onOpenShare,
@@ -197,15 +206,16 @@ export function TopBar({
     </div>
   );
 
-  const mobileMenuHasBadge = !lockedReadOnly && (stagedCount > 0 || auditAlertCount > 0 || editMode);
+  const mobileMenuHasBadge =
+    !lockedReadOnly && (stagedCount > 0 || auditAlertCount > 0 || diffCount > 0 || editMode);
 
   return (
     <header className="no-print relative z-40 border-b border-slate-300 dark:border-slate-800 bg-white dark:bg-[#111827] shadow-2xs">
-      {/* Shared hidden file input for .rig.json import */}
+      {/* Shared hidden file input for .rig.json / .wingrig.json import */}
       <input
         ref={rigFileInputRef}
         type="file"
-        accept=".json,.rig.json"
+        accept=".json,.rig.json,.wingrig.json"
         onChange={handleRigFileChange}
         className="hidden"
       />
@@ -303,9 +313,28 @@ export function TopBar({
             </button>
 
             {mobileMenuOpen && (
-              <div className="absolute right-0 top-full mt-1.5 w-56 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] py-1 shadow-xl z-50 text-xs">
+              <div className="absolute right-0 top-full mt-1.5 w-60 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] py-1 shadow-xl z-50 text-xs">
                 {!lockedReadOnly && (
                   <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onOpenLibrary();
+                        setMobileMenuOpen(false);
+                      }}
+                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/70 cursor-pointer"
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <FolderOpen className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                        <span>Rig Library &amp; Bundles</span>
+                      </span>
+                      <span className="rounded-[1px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0 font-mono text-[10px] text-slate-600 dark:text-slate-300">
+                        {libraryCount}
+                      </span>
+                    </button>
+
+                    <div className="my-1 border-t border-slate-200 dark:border-slate-800" />
+
                     {view === 'canvas' && (
                       <>
                         <button
@@ -359,7 +388,23 @@ export function TopBar({
                         <div className="my-1 border-t border-slate-200 dark:border-slate-800" />
                       </>
                     )}
+                  </>
+                )}
 
+                <button
+                  type="button"
+                  onClick={() => {
+                    onToggleView(view === 'strips' ? 'canvas' : 'strips');
+                    setMobileMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left font-medium text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/70 cursor-pointer"
+                >
+                  <Sliders className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                  <span>{view === 'strips' ? 'Back to Schematic' : 'Console Strips'}</span>
+                </button>
+
+                {!lockedReadOnly && (
+                  <>
                     <button
                       type="button"
                       onClick={() => {
@@ -379,6 +424,25 @@ export function TopBar({
                       ) : auditAlertCount > 0 && view !== 'patch' ? (
                         <span className="h-2 w-2 rounded-full bg-amber-500" />
                       ) : null}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onToggleView(view === 'diff' ? 'canvas' : 'diff');
+                        setMobileMenuOpen(false);
+                      }}
+                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left font-medium text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/70 cursor-pointer"
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <GitCompare className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                        <span>{view === 'diff' ? 'Back to Schematic' : 'Diff & Delta Checklist'}</span>
+                      </span>
+                      {diffCount > 0 && (
+                        <span className="rounded-[1px] bg-amber-500 px-1.5 py-0 font-mono text-[10px] font-bold text-slate-950">
+                          {diffCount}
+                        </span>
+                      )}
                     </button>
 
                     <button
@@ -404,7 +468,7 @@ export function TopBar({
                           className="flex w-full items-center gap-2 px-3 py-2 text-left font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/70 cursor-pointer"
                         >
                           <Upload className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                          <span>Import .rig.json</span>
+                          <span>Import .rig.json / Bundle</span>
                         </button>
                         <button
                           type="button"
@@ -526,9 +590,24 @@ export function TopBar({
                   {rig.name}
                 </h1>
               )}
-              <span className="hidden lg:inline-flex items-center rounded-[1px] border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-[#0b111d] px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
-                WING Rig Visualizer
-              </span>
+              {!lockedReadOnly ? (
+                <button
+                  type="button"
+                  onClick={onOpenLibrary}
+                  title="Open Rig Library to switch setups, duplicate for special events, or export/import full .wingrig.json bundles"
+                  className="inline-flex items-center gap-1 rounded-[1px] border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-[#0b111d] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-700 dark:text-slate-300 hover:border-sky-500 hover:text-sky-700 dark:hover:text-sky-300 transition-colors cursor-pointer"
+                >
+                  <FolderOpen className="w-3 h-3 text-sky-600 dark:text-sky-400" />
+                  <span>Library</span>
+                  <span className="rounded-[1px] bg-white dark:bg-slate-800 px-1 text-[9.5px] font-bold">
+                    {libraryCount}
+                  </span>
+                </button>
+              ) : (
+                <span className="hidden lg:inline-flex items-center rounded-[1px] border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-[#0b111d] px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                  WING Rig Visualizer
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -615,25 +694,43 @@ export function TopBar({
 
                   <button
                     type="button"
-                    title="Import portable .rig.json"
+                    title="Import portable .rig.json or full .wingrig.json bundle"
                     onClick={() => rigFileInputRef.current?.click()}
                     className="inline-flex items-center gap-1 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/80 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
                   >
                     <Upload className="w-3.5 h-3.5" />
-                    <span className="hidden xl:inline font-mono text-[11px]">.rig.json</span>
+                    <span className="hidden 2xl:inline font-mono text-[11px]">.rig.json</span>
                   </button>
                   <button
                     type="button"
-                    title="Export portable .rig.json"
+                    title="Export lightweight .rig.json"
                     onClick={onExportRigJson}
                     className="inline-flex items-center gap-1 rounded-[2px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/80 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span className="hidden xl:inline">Export</span>
+                    <span className="hidden 2xl:inline">Export</span>
                   </button>
                 </>
               )}
+            </>
+          )}
 
+          <button
+            type="button"
+            onClick={() => onToggleView(view === 'strips' ? 'canvas' : 'strips')}
+            title="View full Console Channel Strip map (CH 1–40 & AUX 1–8) with upstream physical origins"
+            className={`inline-flex items-center gap-1.5 rounded-[2px] border px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+              view === 'strips'
+                ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800 dark:border-sky-400 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400'
+                : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100 dark:hover:bg-slate-700'
+            }`}
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span>{view === 'strips' ? 'Schematic' : 'Strips'}</span>
+          </button>
+
+          {!lockedReadOnly && (
+            <>
               <button
                 type="button"
                 onClick={() => onToggleView(view === 'patch' ? 'canvas' : 'patch')}
@@ -658,6 +755,27 @@ export function TopBar({
                     title={`${auditAlertCount} path verifier alert(s)`}
                     className="h-2 w-2 rounded-full bg-amber-500"
                   />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onToggleView(view === 'diff' ? 'canvas' : 'diff')}
+                title="Compare rig profiles or baseline changes and generate an in-person physical delta checklist"
+                className={`inline-flex items-center gap-1.5 rounded-[2px] border px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                  view === 'diff'
+                    ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800 dark:border-sky-400 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400'
+                    : diffCount > 0
+                      ? 'border-amber-400 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:border-amber-600/80 dark:bg-amber-950/60 dark:text-amber-200 dark:hover:bg-amber-950'
+                      : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <GitCompare className="w-3.5 h-3.5" />
+                <span>{view === 'diff' ? 'Schematic' : 'Diff & Delta'}</span>
+                {diffCount > 0 && (
+                  <span className="rounded-[1px] bg-amber-500 px-1.5 py-0 font-mono text-[10px] font-bold text-slate-950">
+                    {diffCount}
+                  </span>
                 )}
               </button>
 

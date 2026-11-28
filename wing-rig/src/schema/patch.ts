@@ -172,3 +172,42 @@ export interface BusOutputSpec {
   index: number;
   side?: 'L' | 'R';
 }
+
+/**
+ * Context passed when a user clicks "Patch here ->" on a vacant slot in the
+ * Rig Inspector or Console Strip View, pre-filling Patch Studio automatically.
+ */
+export type PatchPrefillIntent =
+  | {
+      kind: 'input';
+      nodeId: string;
+      group: PortGroupCode;
+      slot: number;
+      labelHint?: string;
+    }
+  | {
+      kind: 'output';
+      nodeId: string;
+      group: PortGroupCode;
+      slot: number;
+      labelHint?: string;
+    }
+  | {
+      kind: 'strip';
+      consoleNodeId: string;
+      stripKind: 'ch' | 'aux';
+      index: number;
+    }
+  | {
+      kind: 'bus';
+      consoleNodeId: string;
+      busKind: MixBusKind;
+      index: number;
+    }
+  | {
+      kind: 'trunk-slot';
+      trunkId: string;
+      direction: 'forward' | 'return';
+      slot: number;
+    };
+

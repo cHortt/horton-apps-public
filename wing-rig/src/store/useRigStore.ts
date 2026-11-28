@@ -15,6 +15,7 @@ import type {
   ConsoleBaselineMeta,
   ConsoleBaselineRecord,
   ConsoleLinkConfig,
+  PatchPrefillIntent,
   StagedPatchEntry,
 } from '../schema/patch';
 import { traceSignal, validateRigDocument } from '../schema/helpers';
@@ -23,12 +24,32 @@ import { applySnapMerge, type SnapMergeDiff } from '../parser/merge';
 import { parseWingSnap, type ParsedWingSnapshot } from '../parser/wingSnapParser';
 import { applyPatchOpsToRawSnap, buildDefaultSnapExportName } from '../parser/snapPatcher';
 import { inferConsoleLinkConfig, verifyRigPaths } from '../parser/snapVerifier';
+import { computeRigDiff } from '../parser/rigDiff';
 import {
   clearAllBaselines,
   deleteBaselineRecord,
   loadAllBaselines,
   saveBaselineRecord,
 } from './snapBaselineDb';
+import {
+  cloneRigDocument,
+  createLibraryEntryFromRig,
+  deleteLibraryEntryFromDb,
+  duplicateLibraryEntry,
+  generateProfileId,
+  loadAllLibraryEntries,
+  readActiveProfileId,
+  saveLibraryEntry,
+  summarizeLibraryEntry,
+  writeActiveProfileId,
+  type RigLibraryEntry,
+  type RigLibrarySummary,
+} from './rigLibraryDb';
+import {
+  buildBundleFileName,
+  parseRigOrBundleJson,
+  serializeRigBundle,
+} from './rigBundle';
 import {
   decodeRigPayload,
   parseShareModeFromLocation,
@@ -46,7 +67,7 @@ export type SelectionState =
   | { type: 'trunk'; id: string }
   | null;
 
-export type AppViewMode = 'canvas' | 'patch' | 'print';
+export type AppViewMode = 'canvas' | 'strips' | 'patch' | 'diff' | 'print';
 
 function readCurrentShareMode(): ShareModeInfo {
   if (typeof window === 'undefined') {
@@ -170,10 +191,20 @@ export function useRigStore() {
   const [selection, setSelection] = useState<SelectionState>(null);
   const [trace, setTrace] = useState<TraceResult | null>(null);
   const [viewState, setViewState] = useState<AppViewMode>('canvas');
+  const [patchPrefill, setPatchPrefill] = useState<PatchPrefillIntent | null>(null);
+
+  // Clean baseline RigDocument for Delta Checklist tracking (physical + .snap changes)
+  const [baselineRig, setBaselineRig] = useState<RigDocument>(() => cloneRigDocument(rig));
+
+  // Multi-Rig Library state (persisted in IndexedDB wing-rig:library:v1)
+  const [libraryEntries, setLibraryEntries] = useState<RigLibraryEntry[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState<string>(() => readActiveProfileId() ?? '');
+  const [libraryReady, setLibraryReady] = useState<boolean>(false);
 
   const editMode = lockedReadOnly ? false : editModeState;
   const patchUnlocked = lockedReadOnly ? false : patchUnlockedState;
-  const view: AppViewMode = lockedReadOnly && viewState === 'patch' ? 'canvas' : viewState;
+  const view: AppViewMode =
+    lockedReadOnly && (viewState === 'patch' || viewState === 'diff') ? 'canvas' : viewState;
 
   const setEditMode = useCallback(
     (next: boolean) => {
@@ -193,11 +224,25 @@ export function useRigStore() {
 
   const setView = useCallback(
     (next: AppViewMode) => {
-      if (lockedReadOnly && next === 'patch') return;
+      if (lockedReadOnly && (next === 'patch' || next === 'diff')) return;
       setViewState(next);
     },
     [lockedReadOnly],
   );
+
+  const openPatchHere = useCallback(
+    (intent: PatchPrefillIntent) => {
+      if (lockedReadOnly) return;
+      setPatchPrefill(intent);
+      setPatchUnlockedState(true);
+      setViewState('patch');
+    },
+    [lockedReadOnly],
+  );
+
+  const clearPatchPrefill = useCallback(() => {
+    setPatchPrefill(null);
+  }, []);
 
   const setInspectorCollapsed = useCallback((collapsed: boolean) => {
     setInspectorCollapsedState(collapsed);
@@ -212,7 +257,7 @@ export function useRigStore() {
     });
   }, []);
 
-  // Raw lossless .snap baselines (persisted in IndexedDB wing-rig:snapshots:v1)
+  // Raw lossless .snap baselines scoped to the active profile
   const [baselines, setBaselines] = useState<Record<string, ConsoleBaselineRecord>>({});
   const [stagedPatches, setStagedPatches] = useState<StagedPatchEntry[]>(() =>
     shareMode.lockedReadOnly ? [] : loadInitialStaged(),
@@ -230,6 +275,7 @@ export function useRigStore() {
       if (next.source !== 'embedded') {
         const localRig = loadInitialRig();
         setRig(localRig);
+        setBaselineRig(cloneRigDocument(localRig));
         setRigOrigin('local');
         setStagedPatches(next.lockedReadOnly ? [] : loadInitialStaged());
         setLinkConfig(loadInitialLinkConfig(localRig));
@@ -267,6 +313,7 @@ export function useRigStore() {
       if (!active) return;
       if (result.ok) {
         setRig(result.rig);
+        setBaselineRig(cloneRigDocument(result.rig));
         setRigOrigin('embedded');
         setLinkConfig(inferConsoleLinkConfig(result.rig));
         setSharedLoadError(null);
@@ -281,18 +328,58 @@ export function useRigStore() {
     };
   }, [shareMode]);
 
-  // Hydrate raw .snap baselines from IndexedDB on mount (only in editable main mode)
+  // Hydrate Multi-Rig Library from IndexedDB (auto-migrating legacy single-rig + baselines on first run)
   useEffect(() => {
-    if (lockedReadOnly) return;
+    if (lockedReadOnly || rigOrigin !== 'local') return;
     let active = true;
-    void loadAllBaselines().then((loaded) => {
-      if (active) setBaselines(loaded);
-    });
+
+    void Promise.all([loadAllLibraryEntries(), loadAllBaselines()]).then(
+      ([storedEntries, legacyBaselines]) => {
+        if (!active) return;
+        if (storedEntries.length === 0) {
+          const initial = createLibraryEntryFromRig(rig, {
+            id: activeProfileId || generateProfileId('rig'),
+            name: rig.name,
+            venue: rig.venue,
+            tags: ['Primary'],
+            baselineRig: cloneRigDocument(rig),
+            baselines: legacyBaselines,
+            stagedPatches,
+            linkConfig,
+          });
+          setLibraryEntries([initial]);
+          setActiveProfileId(initial.id);
+          setBaselines(initial.baselines);
+          setBaselineRig(initial.baselineRig);
+          writeActiveProfileId(initial.id);
+          void saveLibraryEntry(initial);
+          setLibraryReady(true);
+          return;
+        }
+
+        const savedActiveId = readActiveProfileId();
+        const chosen =
+          storedEntries.find((e) => e.id === savedActiveId) ?? storedEntries[0];
+
+        setLibraryEntries(storedEntries);
+        setActiveProfileId(chosen.id);
+        setRig(chosen.rig);
+        setBaselineRig(chosen.baselineRig ?? cloneRigDocument(chosen.rig));
+        setBaselines(chosen.baselines);
+        setStagedPatches(chosen.stagedPatches);
+        setLinkConfig(chosen.linkConfig ?? inferConsoleLinkConfig(chosen.rig));
+        writeActiveProfileId(chosen.id);
+        setLibraryReady(true);
+      },
+    );
+
     return () => {
       active = false;
     };
-  }, [lockedReadOnly]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockedReadOnly, rigOrigin]);
 
+  // Persist active rig + staged patches + linkConfig to fast localStorage cache
   useEffect(() => {
     if (lockedReadOnly || rigOrigin !== 'local') return;
     try {
@@ -319,6 +406,42 @@ export function useRigStore() {
       // Ignore storage errors
     }
   }, [linkConfig, lockedReadOnly, rigOrigin]);
+
+  // Sync active profile state into the Multi-Rig Library IndexedDB store
+  useEffect(() => {
+    if (!libraryReady || !activeProfileId || lockedReadOnly || rigOrigin !== 'local') return;
+
+    setLibraryEntries((prev) => {
+      const idx = prev.findIndex((e) => e.id === activeProfileId);
+      if (idx === -1) return prev;
+      const existing = prev[idx];
+      const updated: RigLibraryEntry = {
+        ...existing,
+        name: rig.name || existing.name,
+        venue: rig.venue ?? existing.venue,
+        updatedAt: new Date().toISOString(),
+        rig,
+        baselineRig,
+        baselines,
+        stagedPatches,
+        linkConfig,
+      };
+      void saveLibraryEntry(updated);
+      const next = [...prev];
+      next[idx] = updated;
+      return next;
+    });
+  }, [
+    libraryReady,
+    activeProfileId,
+    lockedReadOnly,
+    rigOrigin,
+    rig,
+    baselineRig,
+    baselines,
+    stagedPatches,
+    linkConfig,
+  ]);
 
   // Keep linkConfig valid if consoles are added/removed
   useEffect(() => {
@@ -386,6 +509,24 @@ export function useRigStore() {
   const auditIssues = useMemo(
     () => verifyRigPaths(effectiveRig, linkConfig, baselineMetas, stagedPatches),
     [effectiveRig, linkConfig, baselineMetas, stagedPatches],
+  );
+
+  // Live diff between this profile's clean baselineRig and effectiveRig (captures both .snap & physical edits)
+  const baselineDiff = useMemo(() => {
+    const exportNames: Record<string, string> = {};
+    for (const [cid, meta] of Object.entries(baselineMetas)) {
+      exportNames[cid] = buildDefaultSnapExportName(meta.fileName);
+    }
+    return computeRigDiff(baselineRig, effectiveRig, {
+      beforeLabel: `${baselineRig.name} (Baseline)`,
+      afterLabel: `${effectiveRig.name} (Current)`,
+      consoleExportFileNames: exportNames,
+    });
+  }, [baselineRig, effectiveRig, baselineMetas]);
+
+  const librarySummaries = useMemo<RigLibrarySummary[]>(
+    () => libraryEntries.map(summarizeLibraryEntry),
+    [libraryEntries],
   );
 
   // Esc clears active trace cleanly
@@ -653,6 +794,11 @@ export function useRigStore() {
       setSelection({ type: 'node', id: resolvedId });
       setTrace(null);
 
+      const hadBaselineForConsole = Boolean(baselines[resolvedId]);
+      if (!hadBaselineForConsole && rig.sourceSnapshots.length === 0) {
+        setBaselineRig(cloneRigDocument(merged.rig));
+      }
+
       // Persist raw .snap baseline in IndexedDB for lossless Patch Studio editing & export
       if (rawSnapJson) {
         const record: ConsoleBaselineRecord = {
@@ -673,7 +819,7 @@ export function useRigStore() {
 
       return merged.diff;
     },
-    [rig, lockedReadOnly],
+    [rig, baselines, lockedReadOnly],
   );
 
   // Patch Studio staging & export actions
@@ -804,34 +950,283 @@ export function useRigStore() {
     [lockedReadOnly],
   );
 
-  const importRigJson = useCallback(
-    (rawText: string): { ok: true } | { ok: false; error: string } => {
-      if (lockedReadOnly) {
-        return { ok: false, error: 'Read-only shared view cannot import .rig.json files.' };
-      }
-      try {
-        const parsed = JSON.parse(rawText) as unknown;
-        const validation = validateRigDocument(parsed);
-        if (!validation.valid) {
-          return {
-            ok: false,
-            error: validation.issues.map((i) => `${i.path}: ${i.message}`).join('; '),
-          };
-        }
-        const doc = parsed as RigDocument;
-        setRig(doc);
-        setLinkConfig(inferConsoleLinkConfig(doc));
+  const switchProfile = useCallback(
+    (profileId: string) => {
+      if (lockedReadOnly) return;
+      const target = libraryEntries.find((e) => e.id === profileId);
+      if (!target) return;
+      setActiveProfileId(target.id);
+      writeActiveProfileId(target.id);
+      setRig(cloneRigDocument(target.rig));
+      setBaselineRig(cloneRigDocument(target.baselineRig ?? target.rig));
+      setBaselines(JSON.parse(JSON.stringify(target.baselines)) as Record<string, ConsoleBaselineRecord>);
+      setStagedPatches(JSON.parse(JSON.stringify(target.stagedPatches)) as StagedPatchEntry[]);
+      setLinkConfig({ ...target.linkConfig });
+      setSelection(null);
+      setTrace(null);
+    },
+    [libraryEntries, lockedReadOnly],
+  );
+
+  const duplicateProfile = useCallback(
+    (
+      sourceProfileId: string,
+      options?: {
+        name?: string;
+        notes?: string;
+        tags?: string[];
+        resetBaselineToCurrent?: boolean;
+        activate?: boolean;
+      },
+    ): RigLibraryEntry | null => {
+      if (lockedReadOnly) return null;
+      const source = libraryEntries.find((e) => e.id === sourceProfileId);
+      if (!source) return null;
+      const copy = duplicateLibraryEntry(source, options);
+      setLibraryEntries((prev) => [copy, ...prev]);
+      void saveLibraryEntry(copy);
+      if (options?.activate !== false) {
+        setActiveProfileId(copy.id);
+        writeActiveProfileId(copy.id);
+        setRig(cloneRigDocument(copy.rig));
+        setBaselineRig(cloneRigDocument(copy.baselineRig));
+        setBaselines(JSON.parse(JSON.stringify(copy.baselines)) as Record<string, ConsoleBaselineRecord>);
+        setStagedPatches(JSON.parse(JSON.stringify(copy.stagedPatches)) as StagedPatchEntry[]);
+        setLinkConfig({ ...copy.linkConfig });
         setSelection(null);
         setTrace(null);
-        return { ok: true };
+      }
+      return copy;
+    },
+    [libraryEntries, lockedReadOnly],
+  );
+
+  const createNewProfile = useCallback(
+    (options?: { name?: string; venue?: string; notes?: string; tags?: string[] }): RigLibraryEntry | null => {
+      if (lockedReadOnly) return null;
+      const demo = createMockRig();
+      const entry = createLibraryEntryFromRig(demo, {
+        name: options?.name?.trim() || 'New WING Rig',
+        venue: options?.venue ?? demo.venue,
+        notes: options?.notes,
+        tags: options?.tags ?? [],
+      });
+      setLibraryEntries((prev) => [entry, ...prev]);
+      void saveLibraryEntry(entry);
+      setActiveProfileId(entry.id);
+      writeActiveProfileId(entry.id);
+      setRig(cloneRigDocument(entry.rig));
+      setBaselineRig(cloneRigDocument(entry.baselineRig));
+      setBaselines({});
+      setStagedPatches([]);
+      setLinkConfig({ ...entry.linkConfig });
+      setSelection(null);
+      setTrace(null);
+      return entry;
+    },
+    [lockedReadOnly],
+  );
+
+  const updateProfileMeta = useCallback(
+    (profileId: string, patch: { name?: string; venue?: string; notes?: string; tags?: string[] }) => {
+      if (lockedReadOnly) return;
+      const now = new Date().toISOString();
+      setLibraryEntries((prev) =>
+        prev.map((entry) => {
+          if (entry.id !== profileId) return entry;
+          const nextName = patch.name !== undefined ? patch.name : entry.name;
+          const nextVenue = patch.venue !== undefined ? patch.venue : entry.venue;
+          const updated: RigLibraryEntry = {
+            ...entry,
+            name: nextName,
+            venue: nextVenue,
+            notes: patch.notes !== undefined ? patch.notes : entry.notes,
+            tags: patch.tags !== undefined ? [...patch.tags] : entry.tags,
+            updatedAt: now,
+            rig: {
+              ...entry.rig,
+              name: nextName,
+              venue: nextVenue,
+              updatedAt: now,
+            },
+          };
+          void saveLibraryEntry(updated);
+          return updated;
+        }),
+      );
+      if (profileId === activeProfileId) {
+        setRig((prev) => ({
+          ...prev,
+          name: patch.name !== undefined ? patch.name : prev.name,
+          venue: patch.venue !== undefined ? patch.venue : prev.venue,
+          updatedAt: now,
+        }));
+      }
+    },
+    [activeProfileId, lockedReadOnly],
+  );
+
+  const deleteProfile = useCallback(
+    (profileId: string): boolean => {
+      if (lockedReadOnly) return false;
+      if (libraryEntries.length <= 1) return false;
+      const remaining = libraryEntries.filter((e) => e.id !== profileId);
+      setLibraryEntries(remaining);
+      void deleteLibraryEntryFromDb(profileId);
+      if (profileId === activeProfileId && remaining.length > 0) {
+        const next = remaining[0];
+        setActiveProfileId(next.id);
+        writeActiveProfileId(next.id);
+        setRig(cloneRigDocument(next.rig));
+        setBaselineRig(cloneRigDocument(next.baselineRig ?? next.rig));
+        setBaselines(JSON.parse(JSON.stringify(next.baselines)) as Record<string, ConsoleBaselineRecord>);
+        setStagedPatches(JSON.parse(JSON.stringify(next.stagedPatches)) as StagedPatchEntry[]);
+        setLinkConfig({ ...next.linkConfig });
+        setSelection(null);
+        setTrace(null);
+      }
+      return true;
+    },
+    [libraryEntries, activeProfileId, lockedReadOnly],
+  );
+
+  const markCurrentAsBaseline = useCallback(() => {
+    if (lockedReadOnly) return;
+    setBaselineRig(cloneRigDocument(effectiveRig));
+  }, [effectiveRig, lockedReadOnly]);
+
+  const exportProfileBundle = useCallback(
+    (profileId?: string): { ok: true; fileName: string } | { ok: false; error: string } => {
+      if (lockedReadOnly) {
+        return { ok: false, error: 'Read-only view cannot export bundles.' };
+      }
+      const target =
+        (profileId ? libraryEntries.find((e) => e.id === profileId) : undefined) ??
+        libraryEntries.find((e) => e.id === activeProfileId) ??
+        createLibraryEntryFromRig(rig, {
+          baselineRig,
+          baselines,
+          stagedPatches,
+          linkConfig,
+        });
+
+      try {
+        const json = serializeRigBundle(target);
+        const fileName = buildBundleFileName(target.name);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.click();
+        URL.revokeObjectURL(url);
+        return { ok: true, fileName };
       } catch (err) {
         return {
           ok: false,
-          error: err instanceof Error ? err.message : 'Invalid JSON file.',
+          error: err instanceof Error ? err.message : 'Failed to export rig bundle.',
         };
       }
     },
-    [lockedReadOnly],
+    [
+      lockedReadOnly,
+      libraryEntries,
+      activeProfileId,
+      rig,
+      baselineRig,
+      baselines,
+      stagedPatches,
+      linkConfig,
+    ],
+  );
+
+  const importProfileBundleOrRig = useCallback(
+    (
+      rawText: string,
+      options?: { mode?: 'new-profile' | 'replace-active' },
+    ):
+      | { ok: true; kind: 'bundle' | 'rig'; profileName: string; baselineCount: number }
+      | { ok: false; error: string } => {
+      if (lockedReadOnly) {
+        return { ok: false, error: 'Read-only shared view cannot import files.' };
+      }
+      const parsed = parseRigOrBundleJson(rawText);
+      if (!parsed.ok) return parsed;
+
+      const mode = options?.mode ?? (parsed.kind === 'bundle' ? 'new-profile' : 'replace-active');
+
+      if (parsed.kind === 'bundle') {
+        const incoming = parsed.entry;
+        const collides = libraryEntries.some((e) => e.id === incoming.id);
+        const finalEntry: RigLibraryEntry =
+          mode === 'new-profile' && collides
+            ? {
+                ...incoming,
+                id: generateProfileId('bundle'),
+                updatedAt: new Date().toISOString(),
+              }
+            : {
+                ...incoming,
+                id: mode === 'replace-active' && activeProfileId ? activeProfileId : incoming.id,
+                updatedAt: new Date().toISOString(),
+              };
+
+        setLibraryEntries((prev) => {
+          const exists = prev.some((e) => e.id === finalEntry.id);
+          return exists
+            ? prev.map((e) => (e.id === finalEntry.id ? finalEntry : e))
+            : [finalEntry, ...prev];
+        });
+        void saveLibraryEntry(finalEntry);
+        setActiveProfileId(finalEntry.id);
+        writeActiveProfileId(finalEntry.id);
+        setRig(cloneRigDocument(finalEntry.rig));
+        setBaselineRig(cloneRigDocument(finalEntry.baselineRig));
+        setBaselines(JSON.parse(JSON.stringify(finalEntry.baselines)) as Record<string, ConsoleBaselineRecord>);
+        setStagedPatches(JSON.parse(JSON.stringify(finalEntry.stagedPatches)) as StagedPatchEntry[]);
+        setLinkConfig({ ...finalEntry.linkConfig });
+        setSelection(null);
+        setTrace(null);
+        return {
+          ok: true,
+          kind: 'bundle',
+          profileName: finalEntry.name,
+          baselineCount: parsed.baselineCount,
+        };
+      }
+
+      // Lightweight .rig.json import
+      const doc = parsed.rig;
+      if (mode === 'new-profile') {
+        const entry = createLibraryEntryFromRig(doc, { name: doc.name, venue: doc.venue });
+        setLibraryEntries((prev) => [entry, ...prev]);
+        void saveLibraryEntry(entry);
+        setActiveProfileId(entry.id);
+        writeActiveProfileId(entry.id);
+        setRig(cloneRigDocument(entry.rig));
+        setBaselineRig(cloneRigDocument(entry.baselineRig));
+        setBaselines({});
+        setStagedPatches([]);
+        setLinkConfig({ ...entry.linkConfig });
+      } else {
+        setRig(doc);
+        setBaselineRig(cloneRigDocument(doc));
+        setLinkConfig(inferConsoleLinkConfig(doc));
+      }
+      setSelection(null);
+      setTrace(null);
+      return { ok: true, kind: 'rig', profileName: doc.name, baselineCount: 0 };
+    },
+    [lockedReadOnly, libraryEntries, activeProfileId],
+  );
+
+  const importRigJson = useCallback(
+    (rawText: string): { ok: true } | { ok: false; error: string } => {
+      const res = importProfileBundleOrRig(rawText);
+      if (!res.ok) return res;
+      return { ok: true };
+    },
+    [importProfileBundleOrRig],
   );
 
   const exportRigJson = useCallback(() => {
@@ -853,6 +1248,7 @@ export function useRigStore() {
     if (lockedReadOnly) return;
     const demo = createMockRig();
     setRig(demo);
+    setBaselineRig(cloneRigDocument(demo));
     setLinkConfig(inferConsoleLinkConfig(demo));
     setStagedPatches([]);
     setBaselines({});
@@ -864,6 +1260,11 @@ export function useRigStore() {
   return {
     rig: effectiveRig,
     committedRig: rig,
+    baselineRig,
+    baselineDiff,
+    libraryEntries,
+    librarySummaries,
+    activeProfileId,
     lockedReadOnly,
     shareSource: shareMode.source,
     sharedLoading,
@@ -872,6 +1273,9 @@ export function useRigStore() {
     setEditMode,
     patchUnlocked,
     setPatchUnlocked,
+    patchPrefill,
+    openPatchHere,
+    clearPatchPrefill,
     inspectorCollapsed,
     setInspectorCollapsed,
     toggleInspectorCollapsed,
@@ -897,6 +1301,14 @@ export function useRigStore() {
     exportPatchedSnap,
     commitConsoleBaseline,
     deleteConsoleBaseline,
+    switchProfile,
+    duplicateProfile,
+    createNewProfile,
+    updateProfileMeta,
+    deleteProfile,
+    markCurrentAsBaseline,
+    exportProfileBundle,
+    importProfileBundleOrRig,
     updateRigMeta,
     updateNodePosition,
     updateNodeAnnotation,

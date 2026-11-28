@@ -14,6 +14,9 @@ import { SnapImportModal } from './components/import/SnapImportModal';
 import { ShareRigModal } from './components/share/ShareRigModal';
 import { PrintView } from './components/print/PrintView';
 import { PatchStudio } from './components/patch/PatchStudio';
+import { ConsoleStripsView } from './components/strips/ConsoleStripsView';
+import { RigDiffView } from './components/diff/RigDiffView';
+import { RigLibraryModal } from './components/library/RigLibraryModal';
 import { PROTOCOL_META, resolveNodeName, resolveTrunkName } from './schema/helpers';
 import type { SearchHit, TraceTarget } from './schema/rig';
 
@@ -30,6 +33,8 @@ export function App() {
   const [snapTargetConsoleId, setSnapTargetConsoleId] = useState<string | undefined>(undefined);
   const [addGearModalOpen, setAddGearModalOpen] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [libraryModalOpen, setLibraryModalOpen] = useState(false);
+  const [compareProfileId, setCompareProfileId] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -75,6 +80,11 @@ export function App() {
     if (!isDesktop) {
       setMobileDetent('half');
     }
+  };
+
+  const handleCompareFromLibrary = (profileId: string) => {
+    setCompareProfileId(profileId);
+    store.setView('diff');
   };
 
   const auditAlertCount = store.auditIssues.filter((i) => i.severity !== 'info').length;
@@ -145,6 +155,7 @@ export function App() {
       }}
       onRunTrace={store.runTrace}
       onTraceOnSchematic={handleTraceOnSchematic}
+      onPatchHere={store.lockedReadOnly ? undefined : store.openPatchHere}
       onUpdateNodeAnnotation={store.updateNodeAnnotation}
       onUpdateTrunkAnnotation={store.updateTrunkAnnotation}
       onUpdateChannelAnnotation={store.updateChannelAnnotation}
@@ -169,11 +180,16 @@ export function App() {
         inspectorCollapsed={store.inspectorCollapsed}
         stagedCount={store.stagedPatches.length}
         auditAlertCount={auditAlertCount}
+        diffCount={store.baselineDiff.totalChanges}
+        libraryCount={Math.max(1, store.librarySummaries.length)}
         onToggleTheme={toggleTheme}
         onToggleInspector={store.toggleInspectorCollapsed}
         onToggleEditMode={() => store.setEditMode(!store.editMode)}
         onUpdateRigName={(name) => store.updateRigMeta({ name })}
         onToggleView={store.setView}
+        onOpenLibrary={() => {
+          if (!store.lockedReadOnly) setLibraryModalOpen(true);
+        }}
         onOpenSnapImport={() => openSnapModal()}
         onOpenAddGear={() => {
           if (!store.lockedReadOnly) setAddGearModalOpen(true);
@@ -212,6 +228,29 @@ export function App() {
         <main className="flex-1 overflow-y-auto">
           <PrintView rig={store.rig} onBack={() => store.setView('canvas')} />
         </main>
+      ) : store.view === 'strips' ? (
+        <main className="no-print flex-1 overflow-y-auto">
+          <ConsoleStripsView
+            rig={store.rig}
+            lockedReadOnly={store.lockedReadOnly}
+            onTraceOnSchematic={handleTraceOnSchematic}
+            onPatchHere={store.lockedReadOnly ? undefined : store.openPatchHere}
+          />
+        </main>
+      ) : !store.lockedReadOnly && store.view === 'diff' ? (
+        <main className="flex-1 overflow-y-auto print:overflow-visible">
+          <RigDiffView
+            activeRig={store.rig}
+            baselineRig={store.baselineRig}
+            baselineMetas={store.baselineMetas}
+            libraryEntries={store.libraryEntries}
+            activeProfileId={store.activeProfileId}
+            initialCompareProfileId={compareProfileId}
+            onClearInitialCompare={() => setCompareProfileId(null)}
+            onMarkCurrentAsBaseline={store.markCurrentAsBaseline}
+            onTraceOnSchematic={handleTraceOnSchematic}
+          />
+        </main>
       ) : !store.lockedReadOnly && store.view === 'patch' ? (
         <main className="no-print flex-1 overflow-y-auto">
           <PatchStudio
@@ -221,6 +260,8 @@ export function App() {
             linkConfig={store.linkConfig}
             auditIssues={store.auditIssues}
             patchUnlocked={store.patchUnlocked}
+            prefillIntent={store.patchPrefill}
+            onClearPrefill={store.clearPatchPrefill}
             onTogglePatchUnlocked={() => store.setPatchUnlocked(!store.patchUnlocked)}
             onUpdateLinkConfig={store.updateLinkConfig}
             onStagePatches={store.stagePatches}
@@ -310,6 +351,23 @@ export function App() {
           rig={store.rig}
           stagedCount={store.stagedPatches.length}
           onClose={() => setShareModalOpen(false)}
+        />
+      )}
+
+      {!store.lockedReadOnly && libraryModalOpen && (
+        <RigLibraryModal
+          entries={store.libraryEntries}
+          summaries={store.librarySummaries}
+          activeProfileId={store.activeProfileId}
+          onClose={() => setLibraryModalOpen(false)}
+          onSwitchProfile={store.switchProfile}
+          onDuplicateProfile={store.duplicateProfile}
+          onCreateNewProfile={store.createNewProfile}
+          onUpdateProfileMeta={store.updateProfileMeta}
+          onDeleteProfile={store.deleteProfile}
+          onExportBundle={store.exportProfileBundle}
+          onImportBundleOrRig={store.importProfileBundleOrRig}
+          onCompareProfile={handleCompareFromLibrary}
         />
       )}
     </div>

@@ -232,4 +232,22 @@ describe('inspectorHelpers', () => {
 
     expect(countRigPhantomChannels(rig)).toBe(3);
   });
+
+  it('resolves upstream physical origin for direct stagebox and split-fed FOH strips', async () => {
+    const { resolveStripUpstreamOrigin } = await import('./inspectorHelpers');
+    const rig = createMockRig();
+    const stageWing = rig.nodes.find((n) => n.id === 'stage-wing')!;
+    const fohWing = rig.nodes.find((n) => n.id === 'foh-wing')!;
+
+    const stageCh1 = stageWing.channelStrips!.find((s) => s.kind === 'ch' && s.index === 1)!;
+    const stageOrigin = resolveStripUpstreamOrigin(rig, stageWing, stageCh1);
+    expect(stageOrigin.directSource).toBe('A.1');
+    expect(stageOrigin.physicalOrigin).toContain('A.1');
+
+    const fohCh1 = fohWing.channelStrips!.find((s) => s.kind === 'ch' && s.index === 1)!;
+    const fohOrigin = resolveStripUpstreamOrigin(rig, fohWing, fohCh1);
+    expect(fohOrigin.directSource).toBe('C.1');
+    expect(fohOrigin.chainLabel).toContain('A.1');
+    expect(fohOrigin.chainLabel).toContain('C.1');
+  });
 });

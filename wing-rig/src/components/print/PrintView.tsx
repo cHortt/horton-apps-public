@@ -14,6 +14,7 @@ import {
   resolveTrunkName,
   type NodeTopologySummary,
 } from '../../schema/helpers';
+import { padSlot, resolveStripUpstreamOrigin } from '../inspector/inspectorHelpers';
 
 interface PrintViewProps {
   rig: RigDocument;
@@ -478,6 +479,7 @@ export function PrintView({ rig, onBack }: PrintViewProps) {
   const [includeTrunks, setIncludeTrunks] = useState(true);
   const [includeLocalIo, setIncludeLocalIo] = useState(true);
   const [includeMonitors, setIncludeMonitors] = useState(true);
+  const [includeStrips, setIncludeStrips] = useState(true);
   const [printColorMode, setPrintColorMode] = useState<'color' | 'bw'>('color');
 
   const consoles = useMemo(() => rig.nodes.filter((n) => n.kind === 'console'), [rig.nodes]);
@@ -612,6 +614,14 @@ export function PrintView({ rig, onBack }: PrintViewProps) {
             />
             Monitors & PA
           </label>
+          <label className="inline-flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeStrips}
+              onChange={(e) => setIncludeStrips(e.target.checked)}
+            />
+            Channel Strips
+          </label>
 
           <button
             type="button"
@@ -629,7 +639,7 @@ export function PrintView({ rig, onBack }: PrintViewProps) {
         <div className="flex items-end justify-between border-b-2 border-slate-900 pb-3 mb-4">
           <div>
             <div className="font-mono text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-              Page 1 · System Block Diagram (Landscape) · §1 Stage Inputs · §2 Trunks · §3 Local I/O · §4 Monitors &amp; PA
+              Page 1 · System Block Diagram (Landscape) · §1 Stage Inputs · §2 Trunks · §3 Local I/O · §4 Monitors &amp; PA · §5 Channel Strips
             </div>
             <h1 className="font-display text-2xl font-bold text-slate-900 leading-tight">{rig.name}</h1>
             <div className="text-xs text-slate-600">
@@ -949,6 +959,75 @@ export function PrintView({ rig, onBack }: PrintViewProps) {
                     </table>
                   </div>
                 ))}
+            </div>
+          </div>
+        )}
+
+        {/* 5. Console Channel Strips (CH 1..40 & AUX 1..8) */}
+        {includeStrips && consoles.some((c) => (c.channelStrips?.length ?? 0) > 0) && (
+          <div className="print-section">
+            <h3 className="font-display text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-1 mb-2">
+              5. Console Channel Strips (CH 1–40 &amp; AUX 1–8)
+            </h3>
+            <div className="space-y-4">
+              {consoles
+                .filter((c) => (c.channelStrips?.length ?? 0) > 0)
+                .map((c) => {
+                  const activeStrips = (c.channelStrips ?? [])
+                    .filter((s) => s.sourceGroup !== 'OFF' && s.sourceSlot > 0)
+                    .sort((a, b) =>
+                      a.kind === b.kind ? a.index - b.index : a.kind === 'ch' ? -1 : 1,
+                    );
+                  if (activeStrips.length === 0) return null;
+                  return (
+                    <div key={c.id}>
+                      <div className="text-[11px] font-semibold text-slate-700 mb-1">
+                        {resolveNodeName(rig, c)} ({c.model}) — {activeStrips.length} patched strips
+                      </div>
+                      <table className="print-table w-full border-collapse text-left text-[10.5px]">
+                        <thead>
+                          <tr className="border-y border-slate-400 bg-slate-100 text-[9.5px] font-bold uppercase text-slate-700">
+                            <th className="py-1 px-1.5 w-16">Strip</th>
+                            <th className="py-1 px-1.5">Console Label</th>
+                            <th className="py-1 px-1.5">Source &amp; Physical Origin</th>
+                            <th className="py-1 px-1.5 w-20">Mode / 48V</th>
+                            <th className="py-1 px-1.5">Mains &amp; Bus Sends</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {activeStrips.map((strip) => {
+                            const origin = resolveStripUpstreamOrigin(rig, c, strip);
+                            const mainStr = strip.mainSends.map((m) => `M${m}`).join(' ');
+                            const busStr = strip.busSends.map((b) => `B${b.busIndex}`).join(', ');
+                            const sendsText = [mainStr, busStr].filter(Boolean).join(' · ') || '—';
+                            return (
+                              <tr key={strip.id}>
+                                <td className="py-0.5 px-1.5 font-mono font-semibold uppercase">
+                                  {strip.kind} {padSlot(strip.index)}
+                                </td>
+                                <td className="py-0.5 px-1.5 font-medium text-slate-900">
+                                  {strip.resolvedName}
+                                </td>
+                                <td className="py-0.5 px-1.5 font-mono text-[10px] text-slate-700">
+                                  {origin.chainLabel}
+                                  {origin.cableTag ? ` [${origin.cableTag}]` : ''}
+                                </td>
+                                <td className="py-0.5 px-1.5 font-mono text-[10px]">
+                                  {[origin.mode ?? 'M', origin.phantom48v ? '+48V' : '']
+                                    .filter(Boolean)
+                                    .join(' · ')}
+                                </td>
+                                <td className="py-0.5 px-1.5 font-mono text-[10px] text-slate-600">
+                                  {sendsText}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })}
             </div>
           </div>
         )}

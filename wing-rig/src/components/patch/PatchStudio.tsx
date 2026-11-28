@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeftRight,
   Download,
@@ -15,6 +15,7 @@ import type { PortGroupCode, RigDocument, TraceTarget } from '../../schema/rig';
 import type {
   ConsoleBaselineMeta,
   ConsoleLinkConfig,
+  PatchPrefillIntent,
   PathAuditIssue,
   StagedPatchEntry,
 } from '../../schema/patch';
@@ -33,6 +34,8 @@ interface PatchStudioProps {
   linkConfig: ConsoleLinkConfig;
   auditIssues: PathAuditIssue[];
   patchUnlocked: boolean;
+  prefillIntent?: PatchPrefillIntent | null;
+  onClearPrefill?: () => void;
   onTogglePatchUnlocked: () => void;
   onUpdateLinkConfig: (patch: Partial<ConsoleLinkConfig>) => void;
   onStagePatches: (entries: StagedPatchEntry[]) => void;
@@ -57,6 +60,8 @@ export function PatchStudio({
   linkConfig,
   auditIssues,
   patchUnlocked,
+  prefillIntent,
+  onClearPrefill,
   onTogglePatchUnlocked,
   onUpdateLinkConfig,
   onStagePatches,
@@ -69,6 +74,12 @@ export function PatchStudio({
   onTraceOnSchematic,
 }: PatchStudioProps) {
   const [activeTab, setActiveTab] = useState<PatchTab>('wizard');
+
+  useEffect(() => {
+    if (prefillIntent) {
+      setActiveTab('wizard');
+    }
+  }, [prefillIntent]);
 
   const consoles = useMemo(() => rig.nodes.filter((n) => n.kind === 'console'), [rig.nodes]);
   const issueAlertCount = auditIssues.filter((i) => i.severity !== 'info').length;
@@ -306,6 +317,8 @@ export function PatchStudio({
             linkConfig={linkConfig}
             baselines={baselines}
             patchUnlocked={patchUnlocked}
+            prefillIntent={prefillIntent}
+            onClearPrefill={onClearPrefill}
             onUnlockPatching={onTogglePatchUnlocked}
             onStagePatches={onStagePatches}
             onOpenSnapImport={onOpenSnapImport}

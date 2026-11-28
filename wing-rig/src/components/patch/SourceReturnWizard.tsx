@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -9,6 +9,8 @@ import {
   Plus,
   Radio,
   ShieldAlert,
+  Sparkles,
+  X,
   Zap,
 } from 'lucide-react';
 import type { ChannelMode, MixBusKind, PortGroupCode, RigDocument } from '../../schema/rig';
@@ -16,9 +18,10 @@ import {
   WING_COLORS,
   type ConsoleBaselineMeta,
   type ConsoleLinkConfig,
+  type PatchPrefillIntent,
   type StagedPatchEntry,
 } from '../../schema/patch';
-import { resolveNodeName } from '../../schema/helpers';
+import { resolveNodeName, resolveTrunkName } from '../../schema/helpers';
 import {
   buildDualSourcePatches,
   buildReturnOutputPatches,
@@ -30,6 +33,8 @@ interface SourceReturnWizardProps {
   linkConfig: ConsoleLinkConfig;
   baselines: Record<string, ConsoleBaselineMeta>;
   patchUnlocked: boolean;
+  prefillIntent?: PatchPrefillIntent | null;
+  onClearPrefill?: () => void;
   onUnlockPatching: () => void;
   onStagePatches: (entries: StagedPatchEntry[]) => void;
   onOpenSnapImport: (targetConsoleId?: string) => void;
@@ -64,12 +69,15 @@ export function SourceReturnWizard({
   linkConfig,
   baselines,
   patchUnlocked,
+  prefillIntent,
+  onClearPrefill,
   onUnlockPatching,
   onStagePatches,
   onOpenSnapImport,
   onJumpToMatrix,
 }: SourceReturnWizardProps) {
   const [wizardMode, setWizardMode] = useState<'forward' | 'return'>('forward');
+  const [prefillBanner, setPrefillBanner] = useState<string | null>(null);
 
   const consoles = useMemo(() => rig.nodes.filter((n) => n.kind === 'console'), [rig.nodes]);
   const stageNode = consoles.find((c) => c.id === linkConfig.stageConsoleId);
@@ -81,7 +89,7 @@ export function SourceReturnWizard({
   const hasFohBaseline = Boolean(fohNode && baselines[fohNode.id]);
   const stageOwnsHeadamp = linkConfig.headampOwnerConsoleId === linkConfig.stageConsoleId;
 
-  // Compute occupied slots for helpful collision warnings
+  // Compute occupied slots for helpful collision warnings & smart next-free picking
   const occupiedStageStrips = useMemo(() => {
     const map = new Map<string, string>();
     for (const s of stageNode?.channelStrips ?? []) {
@@ -120,6 +128,30 @@ export function SourceReturnWizard({
     return 24;
   }, [occupiedSplitSlots]);
 
+  const nextFreeStageCh = useMemo(() => {
+    for (let i = 1; i <= 40; i++) {
+      if (!occupiedStageStrips.has(`ch:${i}`)) return i;
+    }
+    return 28;
+  }, [occupiedStageStrips]);
+
+  const nextFreeFohCh = useMemo(() => {
+    for (let i = 1; i <= 40; i++) {
+      if (!occupiedFohStrips.has(`ch:${i}`)) return i;
+    }
+    return 28;
+  }, [occupiedFohStrips]);
+
+  const findNextFreeStageInput = (group: PortGroupCode): number => {
+    const pg = stageNode?.portGroups.find((g) => g.code === group && g.direction !== 'output');
+    const occupied = new Set((pg?.channels ?? []).map((c) => c.slot));
+    const cap = pg?.capacity ?? 48;
+    for (let i = 1; i <= cap; i++) {
+      if (!occupied.has(i)) return i;
+    }
+    return 1;
+  };
+
   // --- Forward Source Form State ---
   const [sourceName, setSourceName] = useState('New Stage Source');
   const [inputGroup, setInputGroup] = useState<PortGroupCode>('A');
@@ -131,7 +163,7 @@ export function SourceReturnWizard({
   const [tags, setTags] = useState<string>('');
 
   const [stageStripKind, setStageStripKind] = useState<'ch' | 'aux'>('ch');
-  const [stageStripIndex, setStageStripIndex] = useState<number>(28);
+  const [stageStripIndex, setStageStripIndex] = useState<number>(nextFreeStageCh);
   const [stageStripClink, setStageStripClink] = useState<boolean>(true);
   const [stageStripOverrideName, setStageStripOverrideName] = useState<string>('');
   const [stageBusSends, setStageBusSends] = useState<number[]>([]);
@@ -141,7 +173,7 @@ export function SourceReturnWizard({
   const [splitSlot, setSplitSlot] = useState<number>(nextFreeSplitSlot);
 
   const [fohStripKind, setFohStripKind] = useState<'ch' | 'aux'>('ch');
-  const [fohStripIndex, setFohStripIndex] = useState<number>(28);
+  const [fohStripIndex, setFohStripIndex] = useState<number>(nextFreeFohCh);
   const [fohStripClink, setFohStripClink] = useState<boolean>(true);
   const [fohStripOverrideName, setFohStripOverrideName] = useState<string>('');
   const [fohMainSends, setFohMainSends] = useState<number[]>([1]);
@@ -162,6 +194,173 @@ export function SourceReturnWizard({
   const [enableRelay, setEnableRelay] = useState<boolean>(Boolean(fohNode && stageNode));
   const [relayOutGroup, setRelayOutGroup] = useState<PortGroupCode>('A');
   const [relayOutSlot, setRelayOutSlot] = useState<number>(16);
+
+  // React to "Patch here ->" intents from Rig Inspector or Console Strip View
+  useEffect(() => {
+    if (!prefillIntent) return;
+
+    const validInputCode = (code: PortGroupCode): PortGroupCode =>
+      INPUT_BANKS.some((b) => b.code === code) ? code : 'A';
+    const validOutputCode = (code: PortGroupCode): PortGroupCode =>
+      OUTPUT_BANKS.some((b) => b.code === code) ? code : 'A';
+
+    if (prefillIntent.kind === 'input') {
+      const clickedNode = rig.nodes.find((n) => n.id === prefillIntent.nodeId);
+      let resolvedGroup: PortGroupCode = validInputCode(prefillIntent.group);
+
+      // If user clicked a stagebox/wireless/external node, resolve the connected console port group
+      if (clickedNode && clickedNode.kind !== 'console' && stageNode) {
+        const trunk = rig.trunks.find(
+          (t) =>
+            (t.sourceNodeId === clickedNode.id && t.targetNodeId === stageNode.id) ||
+            (t.targetNodeId === clickedNode.id && t.sourceNodeId === stageNode.id),
+        );
+        if (trunk) {
+          resolvedGroup = validInputCode(
+            trunk.sourceNodeId === stageNode.id ? trunk.sourcePortGroup : trunk.targetPortGroup,
+          );
+        }
+      }
+
+      setWizardMode('forward');
+      setInputGroup(resolvedGroup);
+      setInputSlot(prefillIntent.slot);
+      setStageStripKind('ch');
+      setStageStripIndex(nextFreeStageCh);
+      setSplitSlot(nextFreeSplitSlot);
+      if (fohNode) {
+        setSplitToFoh(true);
+        setFohStripKind('ch');
+        setFohStripIndex(nextFreeFohCh);
+      }
+      const nodeLabel = clickedNode ? resolveNodeName(rig, clickedNode) : prefillIntent.nodeId;
+      setPrefillBanner(
+        `Pre-filled from ${nodeLabel} In ${prefillIntent.group}.${prefillIntent.slot} — auto-assigned next free Stage CH ${nextFreeStageCh}${fohNode ? `, Split ${linkConfig.stageSplitPort}.${nextFreeSplitSlot}, and FOH CH ${nextFreeFohCh}` : ''}.`,
+      );
+      onClearPrefill?.();
+      return;
+    }
+
+    if (prefillIntent.kind === 'strip') {
+      const isFoh = fohNode && prefillIntent.consoleNodeId === fohNode.id;
+      const freeIn = findNextFreeStageInput('A');
+      setWizardMode('forward');
+      setInputGroup('A');
+      setInputSlot(freeIn);
+      setSplitSlot(nextFreeSplitSlot);
+      if (isFoh) {
+        setSplitToFoh(true);
+        setFohStripKind(prefillIntent.stripKind);
+        setFohStripIndex(prefillIntent.index);
+        setStageStripKind('ch');
+        setStageStripIndex(nextFreeStageCh);
+      } else {
+        setStageStripKind(prefillIntent.stripKind);
+        setStageStripIndex(prefillIntent.index);
+        if (fohNode) {
+          setFohStripKind('ch');
+          setFohStripIndex(nextFreeFohCh);
+        }
+      }
+      const consoleNode = rig.nodes.find((n) => n.id === prefillIntent.consoleNodeId);
+      const consoleName = consoleNode ? resolveNodeName(rig, consoleNode) : prefillIntent.consoleNodeId;
+      setPrefillBanner(
+        `Pre-filled for ${consoleName} ${prefillIntent.stripKind.toUpperCase()} ${prefillIntent.index} — auto-selected next vacant input A.${freeIn} and split slot ${linkConfig.stageSplitPort}.${nextFreeSplitSlot}.`,
+      );
+      onClearPrefill?.();
+      return;
+    }
+
+    if (prefillIntent.kind === 'output') {
+      const clickedNode = rig.nodes.find((n) => n.id === prefillIntent.nodeId);
+      setWizardMode('return');
+      if (clickedNode?.kind === 'console') {
+        setOriginConsoleId(clickedNode.id);
+        setOriginOutGroup(validOutputCode(prefillIntent.group));
+        setOriginOutSlot(prefillIntent.slot);
+        setEnableRelay(false);
+        setPrefillBanner(
+          `Pre-filled return output for ${resolveNodeName(rig, clickedNode)} Out ${prefillIntent.group}.${prefillIntent.slot}.`,
+        );
+      } else {
+        // Stagebox/external output -> route via relay from FOH or direct from Stage
+        setOriginConsoleId(fohNode?.id ?? stageNode?.id ?? '');
+        setEnableRelay(Boolean(fohNode && stageNode));
+        setRelayOutGroup(validOutputCode(prefillIntent.group));
+        setRelayOutSlot(prefillIntent.slot);
+        const nodeLabel = clickedNode ? resolveNodeName(rig, clickedNode) : prefillIntent.nodeId;
+        setPrefillBanner(
+          `Pre-filled physical return destination ${nodeLabel} Out ${prefillIntent.group}.${prefillIntent.slot}.`,
+        );
+      }
+      onClearPrefill?.();
+      return;
+    }
+
+    if (prefillIntent.kind === 'bus') {
+      setWizardMode('return');
+      setOriginConsoleId(prefillIntent.consoleNodeId);
+      setBusKind(prefillIntent.busKind);
+      setBusIndex(prefillIntent.index);
+      const consoleNode = rig.nodes.find((n) => n.id === prefillIntent.consoleNodeId);
+      const consoleName = consoleNode ? resolveNodeName(rig, consoleNode) : prefillIntent.consoleNodeId;
+      setPrefillBanner(
+        `Pre-filled mix bus ${consoleName} ${prefillIntent.busKind.toUpperCase()} ${prefillIntent.index} output patch.`,
+      );
+      onClearPrefill?.();
+      return;
+    }
+
+    if (prefillIntent.kind === 'trunk-slot') {
+      const trunk = rig.trunks.find((t) => t.id === prefillIntent.trunkId);
+      if (trunk) {
+        const isInterConsole =
+          stageNode &&
+          fohNode &&
+          ((trunk.sourceNodeId === stageNode.id && trunk.targetNodeId === fohNode.id) ||
+            (trunk.sourceNodeId === fohNode.id && trunk.targetNodeId === stageNode.id));
+        const trunkName = resolveTrunkName(rig, trunk);
+        if (prefillIntent.direction === 'return') {
+          setWizardMode('return');
+          setOriginConsoleId(fohNode?.id ?? stageNode?.id ?? '');
+          setOriginOutGroup(validOutputCode(trunk.targetPortGroup));
+          setOriginOutSlot(prefillIntent.slot);
+          setPrefillBanner(`Pre-filled return lane #${prefillIntent.slot} on ${trunkName}.`);
+        } else if (isInterConsole) {
+          const freeIn = findNextFreeStageInput('A');
+          setWizardMode('forward');
+          setInputGroup('A');
+          setInputSlot(freeIn);
+          setSplitToFoh(true);
+          setSplitSlot(prefillIntent.slot);
+          setStageStripIndex(nextFreeStageCh);
+          setFohStripIndex(nextFreeFohCh);
+          setPrefillBanner(
+            `Pre-filled inter-console split lane #${prefillIntent.slot} on ${trunkName} — auto-assigned input A.${freeIn}, Stage CH ${nextFreeStageCh}, FOH CH ${nextFreeFohCh}.`,
+          );
+        } else {
+          const consolePort =
+            stageNode && trunk.targetNodeId === stageNode.id
+              ? trunk.targetPortGroup
+              : trunk.sourcePortGroup;
+          setWizardMode('forward');
+          setInputGroup(validInputCode(consolePort));
+          setInputSlot(prefillIntent.slot);
+          setStageStripIndex(nextFreeStageCh);
+          setSplitSlot(nextFreeSplitSlot);
+          if (fohNode) {
+            setSplitToFoh(true);
+            setFohStripIndex(nextFreeFohCh);
+          }
+          setPrefillBanner(
+            `Pre-filled ${trunkName} lane #${prefillIntent.slot} (${validInputCode(consolePort)}.${prefillIntent.slot}).`,
+          );
+        }
+      }
+      onClearPrefill?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillIntent]);
 
   const forwardPreviewPatches = useMemo(() => {
     if (!stageNode) return [];
@@ -414,6 +613,23 @@ export function SourceReturnWizard({
 
   return (
     <div className="space-y-4">
+      {prefillBanner && (
+        <div className="flex items-start justify-between gap-2.5 rounded-[2px] border border-sky-300 dark:border-sky-700/80 bg-sky-50/90 dark:bg-sky-950/50 px-3.5 py-2.5 text-xs text-sky-900 dark:text-sky-100">
+          <div className="flex items-start gap-2 min-w-0">
+            <Sparkles className="w-4 h-4 mt-0.5 shrink-0 text-sky-600 dark:text-sky-400" />
+            <span>{prefillBanner}</span>
+          </div>
+          <button
+            type="button"
+            aria-label="Dismiss pre-fill notice"
+            onClick={() => setPrefillBanner(null)}
+            className="shrink-0 rounded-[1px] p-0.5 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/60 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Direction Mode Switcher */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex rounded-[2px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-1">

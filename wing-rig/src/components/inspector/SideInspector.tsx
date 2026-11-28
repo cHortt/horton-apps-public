@@ -37,7 +37,7 @@ import type {
   TrunkAnnotation,
   TrunkConnection,
 } from '../../schema/rig';
-import type { PathAuditIssue } from '../../schema/patch';
+import type { PatchPrefillIntent, PathAuditIssue } from '../../schema/patch';
 import {
   PROTOCOL_META,
   buildNodeTopologySummary,
@@ -91,6 +91,7 @@ export interface SideInspectorProps {
   onCollapse: () => void;
   onRunTrace: (target: TraceTarget) => void;
   onTraceOnSchematic?: (target: TraceTarget) => void;
+  onPatchHere?: (intent: PatchPrefillIntent) => void;
   onUpdateNodeAnnotation: (nodeId: string, patch: Partial<NodeAnnotation>) => void;
   onUpdateTrunkAnnotation: (trunkId: string, patch: Partial<TrunkAnnotation>) => void;
   onUpdateChannelAnnotation: (channelId: string, patch: Partial<ChannelAnnotation>) => void;
@@ -200,6 +201,7 @@ interface ChannelInspectorRowProps {
   isTraced: boolean;
   isExpanded: boolean;
   traceTarget?: TraceTarget;
+  onPatchHere?: () => void;
   onToggleExpandAndTrace: () => void;
   onSelectNode: (id: string) => void;
   onSelectTrunk: (id: string) => void;
@@ -214,6 +216,7 @@ function ChannelInspectorRow({
   isTraced,
   isExpanded,
   traceTarget,
+  onPatchHere,
   onToggleExpandAndTrace,
   onSelectNode,
   onSelectTrunk,
@@ -249,9 +252,20 @@ function ChannelInspectorRow({
         <span className="flex-1 truncate text-[11.5px] italic text-slate-400 dark:text-slate-500">
           Vacant
         </span>
-        <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-slate-400/80 dark:text-slate-600">
-          Open
-        </span>
+        {onPatchHere ? (
+          <button
+            type="button"
+            onClick={onPatchHere}
+            className="inline-flex shrink-0 items-center gap-1 rounded-[1px] border border-sky-300/80 dark:border-sky-700/80 bg-sky-50/80 dark:bg-sky-950/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/70 transition-colors cursor-pointer"
+          >
+            <span>Patch here</span>
+            <ArrowRight className="w-2.5 h-2.5" />
+          </button>
+        ) : (
+          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-slate-400/80 dark:text-slate-600">
+            Open
+          </span>
+        )}
       </div>
     );
   }
@@ -630,6 +644,7 @@ function ChannelInspectorRow({
 function TrunkInspectorView({
   rig,
   trunk,
+  lockedReadOnly = false,
   editMode,
   isDark,
   trace,
@@ -640,6 +655,7 @@ function TrunkInspectorView({
   onClearTrace,
   onCollapse,
   onRunTrace,
+  onPatchHere,
   onUpdateTrunkAnnotation,
   onUpdateChannelAnnotation,
   onDeleteManualTrunk,
@@ -1228,6 +1244,17 @@ function TrunkInspectorView({
                 isTraced={isTraced}
                 isExpanded={expandedRowKey === row.key}
                 traceTarget={traceTarget}
+                onPatchHere={
+                  !lockedReadOnly && onPatchHere && row.isVacant
+                    ? () =>
+                        onPatchHere({
+                          kind: 'trunk-slot',
+                          trunkId: trunk.id,
+                          direction: effectiveDir,
+                          slot: row.slot,
+                        })
+                    : undefined
+                }
                 onSelectNode={onSelectNode}
                 onSelectTrunk={onSelectTrunk}
                 onUpdateChannelAnnotation={onUpdateChannelAnnotation}
@@ -1252,6 +1279,7 @@ function TrunkInspectorView({
 function NodeInspectorView({
   rig,
   node,
+  lockedReadOnly = false,
   editMode,
   isDark,
   trace,
@@ -1262,6 +1290,7 @@ function NodeInspectorView({
   onClearTrace,
   onCollapse,
   onRunTrace,
+  onPatchHere,
   onUpdateNodeAnnotation,
   onUpdateChannelAnnotation,
   onUpdateBusAnnotation,
@@ -2434,6 +2463,17 @@ function NodeInspectorView({
                         isTraced={isTraced}
                         isExpanded={expandedRowKey === row.key}
                         traceTarget={traceTarget}
+                        onPatchHere={
+                          !lockedReadOnly && onPatchHere && row.isVacant
+                            ? () =>
+                                onPatchHere({
+                                  kind: pg.direction === 'output' ? 'output' : 'input',
+                                  nodeId: node.id,
+                                  group: pg.code,
+                                  slot: row.slot,
+                                })
+                            : undefined
+                        }
                         onSelectNode={onSelectNode}
                         onSelectTrunk={onSelectTrunk}
                         onUpdateChannelAnnotation={onUpdateChannelAnnotation}
@@ -2464,6 +2504,17 @@ function NodeInspectorView({
                   row={row}
                   isTraced={Boolean(row.source && tracedChannelIds.has(row.source.channel.id))}
                   isExpanded={expandedStripId === row.key}
+                  onPatchHere={
+                    !lockedReadOnly && onPatchHere && row.isVacant
+                      ? () =>
+                          onPatchHere({
+                            kind: 'strip',
+                            consoleNodeId: node.id,
+                            stripKind: row.kind,
+                            index: row.index,
+                          })
+                      : undefined
+                  }
                   onToggle={() => {
                     if (row.isVacant || !row.strip) return;
                     setExpandedStripId((cur) => (cur === row.key ? null : row.key));
@@ -2512,9 +2563,27 @@ function NodeInspectorView({
                         Vacant
                       </span>
                     </div>
-                    <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-slate-400/80 dark:text-slate-600">
-                      Open
-                    </span>
+                    {!lockedReadOnly && onPatchHere ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onPatchHere({
+                            kind: 'bus',
+                            consoleNodeId: node.id,
+                            busKind: row.kind,
+                            index: row.index,
+                          })
+                        }
+                        className="inline-flex shrink-0 items-center gap-1 rounded-[1px] border border-sky-300/80 dark:border-sky-700/80 bg-sky-50/80 dark:bg-sky-950/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/70 transition-colors cursor-pointer"
+                      >
+                        <span>Patch here</span>
+                        <ArrowRight className="w-2.5 h-2.5" />
+                      </button>
+                    ) : (
+                      <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-slate-400/80 dark:text-slate-600">
+                        Open
+                      </span>
+                    )}
                   </div>
                 );
               }
@@ -2709,6 +2778,7 @@ function ConsoleStripRow({
   row,
   isTraced,
   isExpanded,
+  onPatchHere,
   onToggle,
   onTraceBus,
 }: {
@@ -2717,6 +2787,7 @@ function ConsoleStripRow({
   row: InspectorStripRow;
   isTraced: boolean;
   isExpanded: boolean;
+  onPatchHere?: () => void;
   onToggle: () => void;
   onTraceBus: (bus: MixBusSummary) => void;
 }) {
@@ -2731,9 +2802,20 @@ function ConsoleStripRow({
         <span className="flex-1 truncate text-[11.5px] italic text-slate-400 dark:text-slate-500">
           Vacant
         </span>
-        <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-slate-400/80 dark:text-slate-600">
-          OFF
-        </span>
+        {onPatchHere ? (
+          <button
+            type="button"
+            onClick={onPatchHere}
+            className="inline-flex shrink-0 items-center gap-1 rounded-[1px] border border-sky-300/80 dark:border-sky-700/80 bg-sky-50/80 dark:bg-sky-950/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/70 transition-colors cursor-pointer"
+          >
+            <span>Patch here</span>
+            <ArrowRight className="w-2.5 h-2.5" />
+          </button>
+        ) : (
+          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-slate-400/80 dark:text-slate-600">
+            OFF
+          </span>
+        )}
       </div>
     );
   }
